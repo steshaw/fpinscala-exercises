@@ -36,7 +36,41 @@ object MyModule {
 
   // Exercise 1: Write a function to compute the nth fibonacci number
 
-  def fib(n: Int): Int = ???
+  def fib(n: Int): Int = {
+    @annotation.tailrec
+    def loop(n: Int, current: Int, next: Int): Int =
+      if (n <= 0) current
+      else loop(n-1, next, current + next)
+    loop(n, 0, 1)
+  }
+
+  // NOTE: Inefficient
+  def fib2(n: Int): Int =
+    if (n <= 0) 0
+    else if (n == 1) 1
+    else fib2(n-2) + fib2(n-1)
+
+  def fibs3: Stream[Int] = {
+    def fibs0(prev: Int, next: Int): Stream[Int] = prev #:: fibs0(next, prev+next)
+    fibs0(0, 1)
+  }
+
+  def fib3(n: Int): Int = fibs3(n)
+
+  def fibs4: Stream[Int] = 0 #:: 1 #:: fibs4.zip(fibs4.tail).map({case (n, m) => n + m})
+  def fib4(n: Int): Int = fibs4(n)
+
+  // NOTE: Runs into StackOverflowError problems.
+  def zipWith[A, B, C](as: Stream[A], bs: Stream[B])(f: (A, B) => C): Stream[C] = {
+    (as, bs) match {
+      case (Stream.Empty, Stream.Empty) => Stream.empty
+      case (a #:: as_, b #:: bs_) => f(a, b) #:: zipWith(as_, bs_)(f)
+      case _ => Stream.empty
+    }
+  }
+
+  def fibs5: Stream[Int] = 0 #:: 1 #:: zipWith(fibs5, fibs5.tail)(_ + _)
+  def fib5(n: Int): Int = fibs5(n)
 
   // This definition and `formatAbs` are very similar..
   private def formatFactorial(n: Int) = {
@@ -70,8 +104,16 @@ object TestFib {
 
   // test implementation of `fib`
   def main(args: Array[String]): Unit = {
-    println("Expected: 0, 1, 1, 2, 3, 5, 8")
-    println("Actual:   %d, %d, %d, %d, %d, %d, %d".format(fib(0), fib(1), fib(2), fib(3), fib(4), fib(5), fib(6)))
+    def printResult(name: String, fib: Int => Int): Unit = {
+      println("Actual %10s: %d, %d, %d, %d, %d, %d, %d".format(name, fib(0), fib(1), fib(2), fib(3), fib(4), fib(5), fib(6)))
+    }
+
+    println("Expected %8s: %d, %d, %d, %d, %d, %d, %d".format("", 0, 1, 1, 2, 3, 5, 8))
+    printResult("fib", fib)
+    printResult("fib2", fib2)
+    printResult("fib3", fib3)
+    printResult("fib4", fib4)
+//    printResult("fib5", fib5)
   }
 }
 
