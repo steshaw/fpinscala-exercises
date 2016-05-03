@@ -2,16 +2,31 @@ package fpinscala.parsing
 
 import scala.language.higherKinds
 import scala.language.implicitConversions
+import scala.util.matching.Regex
 
 trait Parsers[Parser[+_]] { self =>
 
   // Primitives
   def string(s: String): Parser[String]
+
   def slice[A](p: Parser[A]): Parser[String]
+
   def succeed[A](a: A): Parser[A] = string("") map (_ => a) // XXX: actually not primitive
-  def map[A, B](p: Parser[A])(f: A => B): Parser[B]
-  def product[A, B](p1: Parser[A], p2: => Parser[B]): Parser[(A, B)]
+
+  def map[A, B](p: Parser[A])(f: A => B): Parser[B] =
+    p.flatMap(f.andThen(succeed))
+
+  def flatMap[A, B](p: Parser[A])(f: A => Parser[B]): Parser[B]
+
+  def product[A, B](p1: Parser[A], p2: => Parser[B]): Parser[(A, B)] =
+    p1.flatMap { r1 =>
+      p2.flatMap { r2 =>
+        succeed((r1, r2))
+      }}
+
   def or[A](p1: Parser[A], p2: => Parser[A]): Parser[A]
+
+  def regex(r: Regex): Parser[String]
 
   // Non-primitives
   def run[A](p: Parser[A])(input: String): Either[ParseError, A]
@@ -26,7 +41,10 @@ trait Parsers[Parser[+_]] { self =>
     p ** many(p) map { case (r, rs) => r :: rs}
 
   def map2[A, B, C](p1: Parser[A], p2: => Parser[B])(f: (A, B) => C): Parser[C] =
-    product(p1, p2) map f.tupled
+    p1.flatMap { r1 =>
+      p2.flatMap { r2 =>
+        succeed(f(r1, r2))
+      }}
 
   def listOfN[A](n: Int, p: Parser[A]): Parser[List[A]] =
     if (n <= 0) succeed(Nil)
@@ -34,7 +52,11 @@ trait Parsers[Parser[+_]] { self =>
 
   val numA: Parser[Int] = char('a').many.map(_.size)
 
+  // Implicits
+
   implicit val stringToParser = string _
+
+  implicit val regexToParser = regex _
 
   implicit def operators[A](p: Parser[A]): ParserOps[A] = ParserOps[A](p)
 
@@ -49,6 +71,8 @@ trait Parsers[Parser[+_]] { self =>
     def many = self.many(p1)
 
     def map[B](f: A => B) = self.map(p1)(f)
+
+    def flatMap[B](f: A => Parser[B]): Parser[B] = self.flatMap(p1)(f)
   }
 
   object Laws {
@@ -68,6 +92,17 @@ trait Parsers[Parser[+_]] { self =>
 
     // Product is associative.
     // def productAssociativeProp = (a ** b) ** c == a ** (b ** c)
+  }
+
+  trait Usage {
+    // Exercise 9.6. -- that many 'a's.
+    val thatManyAs = {
+      val digit = """[0-9]""".r
+      digit.flatMap { digit =>
+        val n = digit.toInt
+        listOfN(n, char('a'))
+      }
+    }
   }
 }
 
