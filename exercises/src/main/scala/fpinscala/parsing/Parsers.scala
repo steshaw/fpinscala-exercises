@@ -3,7 +3,7 @@ package fpinscala.parsing
 import scala.language.higherKinds
 import scala.language.implicitConversions
 
-trait Parsers[Parser[+_]] { self => // so inner classes may call methods of trait
+trait Parsers[Parser[+_]] { self =>
 
   def run[A](p: Parser[A])(input: String): Either[ParseError, A]
 
@@ -12,12 +12,12 @@ trait Parsers[Parser[+_]] { self => // so inner classes may call methods of trai
 
   def slice[A](p: Parser[A]): Parser[String]
 
-  def product[A, B](p1: Parser[A], p2: Parser[B]): Parser[(A, B)]
+  def product[A, B](p1: Parser[A], p2: => Parser[B]): Parser[(A, B)]
 
   def char(c: Char): Parser[Char] =
     string(c.toString) map (_.charAt(0))
 
-  def or[A](p1: Parser[A], p2: Parser[A]): Parser[A]
+  def or[A](p1: Parser[A], p2: => Parser[A]): Parser[A]
 
   implicit def string(s: String): Parser[String]
 
@@ -34,8 +34,8 @@ trait Parsers[Parser[+_]] { self => // so inner classes may call methods of trai
 
   def map[A, B](p: Parser[A])(f: A => B): Parser[B]
 
-  def map2[A, B, C](p1: Parser[A], p2: Parser[B])(f: (A, B) => C): Parser[C] =
-    product(p1, p2) map { case (a, b) => f(a, b) }
+  def map2[A, B, C](p1: Parser[A], p2: => Parser[B])(f: (A, B) => C): Parser[C] =
+    product(p1, p2) map f.tupled
 
   def listOfN[A](n: Int, p: Parser[A]): Parser[List[A]] =
     if (n <= 0) succeed(Nil)
@@ -44,9 +44,9 @@ trait Parsers[Parser[+_]] { self => // so inner classes may call methods of trai
   val numA: Parser[Int] = char('a').many.map(_.size)
 
   case class ParserOps[A](p1: Parser[A]) {
-    def |[B >: A](p2: Parser[B]) = or(p1, p2)
+    def |[B >: A](p2: => Parser[B]) = or(p1, p2)
 
-    def **[B](p2 : Parser[B]) = product(p1, p2)
+    def **[B](p2: => Parser[B]) = product(p1, p2)
 
     def many = self.many(p1)
 
