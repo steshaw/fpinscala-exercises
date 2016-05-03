@@ -76,8 +76,8 @@ trait Parsers[Parser[+_]] { self =>
   }
 
   object Laws {
-    import fpinscala.testing._
-
+//    import fpinscala.testing._
+//
 //    def equal[A](p1: Parser[A], p2: Parser[A])(in: Gen[String]): Prop =
 //      forAll(in)(s => run(p1)(s) == run(p2)(s))
 //
@@ -108,21 +108,21 @@ trait Parsers[Parser[+_]] { self =>
 
 case class Location(input: String, offset: Int = 0) {
 
-  lazy val line = input.slice(0,offset+1).count(_ == '\n') + 1
-  lazy val col = input.slice(0,offset+1).reverse.indexOf('\n')
+  lazy val line = input.slice(0, offset + 1).count(_ == '\n') + 1
+  lazy val col = input.slice(0, offset + 1).reverse.indexOf('\n')
 
   def toError(msg: String): ParseError =
     ParseError(List((this, msg)))
 
   def advanceBy(n: Int) = copy(offset = offset+n)
 
-  /* Returns the line corresponding to this location */
+  // Returns the line corresponding to this location
   def currentLine: String = 
-    if (input.length > 1) input.lines.drop(line-1).next
+    if (input.length > 1) input.lines.drop(line - 1).next
     else ""
 }
 
-case class ParseError(stack: List[(Location,String)] = List(),
+case class ParseError(stack: List[(Location, String)] = List(),
                       otherFailures: List[ParseError] = List()) {
 }
 
@@ -185,14 +185,14 @@ object JsonParsing {
     import P._
     import JSON._
 
-    val spaces = char(' ').many.slice // TODO: we must ignore whitespace between all tokens.
+    val spaces = char(' ').many.slice
     val dquote = char('"')
     val anyChar = """.""".r
 
-    implicit def moreOps[A](p: Parser[A]): MoreParserOps[A] = MoreParserOps[A](p)
     case class MoreParserOps[A](p1: Parser[A]) {
-      def w: Parser[A] = p1 ** spaces map { case (r, _) => r } // XXX: ignore righy result
+      def w: Parser[A] = p1 ** spaces map { case (r, _) => r } // XXX: Ignore right result.
     }
+    implicit def moreOps[A](p: Parser[A]): MoreParserOps[A] = MoreParserOps[A](p)
 
     //val jsonString = dquote ** jsonStringBody ** dquote map { case ((_, s), _) => JString(s) }
 
@@ -209,12 +209,10 @@ object JsonParsing {
     }
 
     def surround[A, B](lbrace: Parser[A], rbrace: Parser[A])(body: Parser[B]): Parser[B] =
-      lbrace ** body ** rbrace map { case ((_, bodyResult), _) => { // XXX: ignore left and right results.
-        bodyResult
-      }}
+      lbrace ** body ** rbrace map { case ((_, bodyResult), _) => bodyResult } // XXX: Ignore left and right results.
 
     def sepBy[A, B](sep: Parser[A], body: Parser[B]): Parser[List[B]] = {
-      lazy val rest = sep ** sepBy(sep, body) map { case (_, r) => r } // XXX: ignore left result.
+      lazy val rest = sep ** sepBy(sep, body) map { case (_, r) => r } // XXX: Ignore left result.
 
       body ** (rest | succeed(Nil)) map { case (b, bs) => b :: bs }
     }
@@ -234,7 +232,7 @@ object JsonParsing {
     def jsonNull = string("null").map(_ => JNull).w
 
     val jsonRoot =
-      spaces ** (jsonObject | jsonArray) map { case (_, r) => r} // XXX: ignore right result.
+      spaces ** (jsonObject | jsonArray) map { case (_, r) => r} // XXX: Ignore right result.
 
     jsonRoot
   }
