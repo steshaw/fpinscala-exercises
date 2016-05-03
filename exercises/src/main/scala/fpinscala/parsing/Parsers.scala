@@ -7,7 +7,15 @@ trait Parsers[Parser[+_]] { self => // so inner classes may call methods of trai
 
   def run[A](p: Parser[A])(input: String): Either[ParseError, A]
 
-  def char(c: Char): Parser[Char]
+  def succeed[A](a: A): Parser[A] =
+    string("") map (_ => a)
+
+  def slice[A](p: Parser[A]): Parser[String]
+
+  def product[A, B](p1: Parser[A], p2: Parser[B]): Parser[(A, B)]
+
+  def char(c: Char): Parser[Char] =
+    string(c.toString) map (_.charAt(0))
 
   def or[A](p1: Parser[A], p2: Parser[A]): Parser[A]
 
@@ -18,16 +26,27 @@ trait Parsers[Parser[+_]] { self => // so inner classes may call methods of trai
   implicit def asStringParser[A](a: A)(implicit f: A => Parser[String]): ParserOps[String] =
     ParserOps(f(a))
 
-  def many[A](p: Parser[A]): Parser[List[A]]
+  def many[A](p: Parser[A]): Parser[List[A]] =
+    map2(p, many(p)){case (r, rs) => r :: rs} | succeed(Nil)
+
+  def many1[A](p: Parser[A]): Parser[List[A]] =
+    p ** many(p) map { case (r, rs) => r :: rs}
 
   def map[A, B](p: Parser[A])(f: A => B): Parser[B]
 
-  def listOfN[A](n: Int, p: Parser[A]): Parser[List[A]]
+  def map2[A, B, C](p1: Parser[A], p2: Parser[B])(f: (A, B) => C): Parser[C] =
+    product(p1, p2) map { case (a, b) => f(a, b) }
+
+  def listOfN[A](n: Int, p: Parser[A]): Parser[List[A]] =
+    if (n <= 0) succeed(Nil)
+    else map2(p, listOfN(n - 1, p))((r, rs) => r :: rs)
 
   val numA: Parser[Int] = char('a').many.map(_.size)
 
   case class ParserOps[A](p1: Parser[A]) {
     def |[B >: A](p2: Parser[B]) = or(p1, p2)
+
+    def **[B](p2 : Parser[B]) = product(p1, p2)
 
     def many = self.many(p1)
 
@@ -48,6 +67,9 @@ trait Parsers[Parser[+_]] { self => // so inner classes may call methods of trai
 //
 //    def stringProp(s: Gen[String]): Prop =
 //      run(string(s))(s) == Right(s)
+
+    // Product is associative.
+    // def productAssociativeProp = (a ** b) ** c == a ** (b ** c)
   }
 }
 
