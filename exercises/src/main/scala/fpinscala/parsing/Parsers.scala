@@ -5,34 +5,25 @@ import scala.language.implicitConversions
 
 trait Parsers[Parser[+_]] { self =>
 
-  def run[A](p: Parser[A])(input: String): Either[ParseError, A]
-
-  def succeed[A](a: A): Parser[A] =
-    string("") map (_ => a)
-
+  // Primitives
+  def string(s: String): Parser[String]
   def slice[A](p: Parser[A]): Parser[String]
-
+  def succeed[A](a: A): Parser[A] = string("") map (_ => a) // XXX: actually not primitive
+  def map[A, B](p: Parser[A])(f: A => B): Parser[B]
   def product[A, B](p1: Parser[A], p2: => Parser[B]): Parser[(A, B)]
+  def or[A](p1: Parser[A], p2: => Parser[A]): Parser[A]
+
+  // Non-primitives
+  def run[A](p: Parser[A])(input: String): Either[ParseError, A]
 
   def char(c: Char): Parser[Char] =
     string(c.toString) map (_.charAt(0))
-
-  def or[A](p1: Parser[A], p2: => Parser[A]): Parser[A]
-
-  implicit def string(s: String): Parser[String]
-
-  implicit def operators[A](p: Parser[A]): ParserOps[A] = ParserOps[A](p)
-
-  implicit def asStringParser[A](a: A)(implicit f: A => Parser[String]): ParserOps[String] =
-    ParserOps(f(a))
 
   def many[A](p: Parser[A]): Parser[List[A]] =
     map2(p, many(p)){case (r, rs) => r :: rs} | succeed(Nil)
 
   def many1[A](p: Parser[A]): Parser[List[A]] =
     p ** many(p) map { case (r, rs) => r :: rs}
-
-  def map[A, B](p: Parser[A])(f: A => B): Parser[B]
 
   def map2[A, B, C](p1: Parser[A], p2: => Parser[B])(f: (A, B) => C): Parser[C] =
     product(p1, p2) map f.tupled
@@ -42,6 +33,13 @@ trait Parsers[Parser[+_]] { self =>
     else map2(p, listOfN(n - 1, p))((r, rs) => r :: rs)
 
   val numA: Parser[Int] = char('a').many.map(_.size)
+
+  implicit val stringToParser = string _
+
+  implicit def operators[A](p: Parser[A]): ParserOps[A] = ParserOps[A](p)
+
+  implicit def asStringParser[A](a: A)(implicit f: A => Parser[String]): ParserOps[String] =
+    ParserOps(f(a))
 
   case class ParserOps[A](p1: Parser[A]) {
     def |[B >: A](p2: => Parser[B]) = or(p1, p2)
