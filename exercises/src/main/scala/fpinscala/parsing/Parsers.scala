@@ -9,14 +9,26 @@ trait Parsers[Parser[+_]] { self =>
   // Primitives
   def string(s: String): Parser[String]
 
+  def regex(r: Regex): Parser[String]
+
   def slice[A](p: Parser[A]): Parser[String]
 
   def succeed[A](a: A): Parser[A] = string("") map (_ => a) // XXX: actually not primitive
 
-  def map[A, B](p: Parser[A])(f: A => B): Parser[B] =
-    p.flatMap(f.andThen(succeed))
-
   def flatMap[A, B](p: Parser[A])(f: A => Parser[B]): Parser[B]
+
+  def or[A](p1: Parser[A], p2: => Parser[A]): Parser[A]
+
+
+  // Non-primitives
+
+  def map[A, B](p: Parser[A])(f: A => B): Parser[B] = p.flatMap(f.andThen(succeed))
+
+  def map2[A, B, C](p1: Parser[A], p2: => Parser[B])(f: (A, B) => C): Parser[C] =
+    p1.flatMap { r1 =>
+      p2.flatMap { r2 =>
+        succeed(f(r1, r2))
+      }}
 
   def product[A, B](p1: Parser[A], p2: => Parser[B]): Parser[(A, B)] =
     p1.flatMap { r1 =>
@@ -24,11 +36,6 @@ trait Parsers[Parser[+_]] { self =>
         succeed((r1, r2))
       }}
 
-  def or[A](p1: Parser[A], p2: => Parser[A]): Parser[A]
-
-  def regex(r: Regex): Parser[String]
-
-  // Non-primitives
   def run[A](p: Parser[A])(input: String): Either[ParseError, A]
 
   def char(c: Char): Parser[Char] =
@@ -39,12 +46,6 @@ trait Parsers[Parser[+_]] { self =>
 
   def many1[A](p: Parser[A]): Parser[List[A]] =
     p ** many(p) map { case (r, rs) => r :: rs}
-
-  def map2[A, B, C](p1: Parser[A], p2: => Parser[B])(f: (A, B) => C): Parser[C] =
-    p1.flatMap { r1 =>
-      p2.flatMap { r2 =>
-        succeed(f(r1, r2))
-      }}
 
   def listOfN[A](n: Int, p: Parser[A]): Parser[List[A]] =
     if (n <= 0) succeed(Nil)
