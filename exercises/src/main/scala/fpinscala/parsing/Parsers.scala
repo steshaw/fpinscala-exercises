@@ -7,6 +7,7 @@ import scala.util.matching.Regex
 trait Parsers[Parser[+_]] { self =>
 
   // Primitives
+
   def string(s: String): Parser[String]
 
   def regex(r: Regex): Parser[String]
@@ -19,7 +20,6 @@ trait Parsers[Parser[+_]] { self =>
 
   def or[A](p1: Parser[A], p2: => Parser[A]): Parser[A]
 
-
   // Non-primitives
 
   def map[A, B](p: Parser[A])(f: A => B): Parser[B] = p.flatMap(f.andThen(succeed))
@@ -31,10 +31,7 @@ trait Parsers[Parser[+_]] { self =>
       }}
 
   def product[A, B](p1: Parser[A], p2: => Parser[B]): Parser[(A, B)] =
-    p1.flatMap { r1 =>
-      p2.flatMap { r2 =>
-        succeed((r1, r2))
-      }}
+    map2(p1, p2)((_, _))
 
   def run[A](p: Parser[A])(input: String): Either[ParseError, A]
 
@@ -74,6 +71,8 @@ trait Parsers[Parser[+_]] { self =>
     def map[B](f: A => B) = self.map(p1)(f)
 
     def flatMap[B](f: A => Parser[B]): Parser[B] = self.flatMap(p1)(f)
+
+    def slice: Parser[String] = self.slice(p1)
   }
 
   object Laws {
@@ -125,4 +124,118 @@ case class Location(input: String, offset: Int = 0) {
 
 case class ParseError(stack: List[(Location,String)] = List(),
                       otherFailures: List[ParseError] = List()) {
+}
+
+object JsonParsing {
+
+  trait JSON
+  object JSON {
+    case object JNull extends JSON
+    case class JNumber(get: Double) extends JSON
+    case class JString(get: String) extends JSON
+    case class JBool(get: Boolean) extends JSON
+    case class JArray(get: IndexedSeq[JSON]) extends JSON
+    case class JObject(get: Map[String, JSON]) extends JSON
+  }
+
+  val jsonNumberRegex = """-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?""".r
+
+  val jsonStringRegex =
+    """" ([^"\\]* | \\["\\bfnrt\/] | \\u[0-9a-fA-F]{4} )* """".filterNot(_.isSpaceChar).r
+
+  val hackJsonString = (s: String) => {
+    // XXX: What horrible hacks has our jsonStringRegex caused us to consider?!?
+
+    println(s"s = [[$s]]")
+    // Remove double quotes.
+    val s1 = s.replaceFirst("^\"", "")
+    println(s"s1 = [[$s1]]")
+    val s2 = s1.replaceFirst("\"$", "")
+    println(s"s2 = [[$s2]]")
+
+    // NOTE: "\\x5C" is "\". This is so that we can match literal "\" as a regex.
+
+    // Replace control escapes.
+    val s3 = s2.replaceAll("\\x5C\\x62", "\b") // "\\x62" is "b"
+    println(s"s3 = [[$s3]]")
+    val s4 = s3.replaceAll("\\x5C\\x66", "\f") // "\\x66" is "f"
+    println(s"s4 = [[$s4]]")
+    val s5 = s4.replaceAll("\\x5C\\x6E", "\n") // "\\x6E" is "n"
+    println(s"s5 = [[$s5]]")
+    val s6 = s5.replaceAll("\\x5C\\x72", "\r") // "\\x72" is "r"
+    println(s"s6 = [[$s6]]")
+    val s7 = s6.replaceAll("\\x5C\\x74", "\t") // "\\x74" is "t"
+    println(s"s7 = [[$s7]]")
+
+    // Replace unicode escapes.
+    // NOTE: "\\x75" is the same as "u". This is done to avoid being an incorrect unicode matching expression.
+    val s8 = "\\x5C\\x75[0-9a-fA-F]{4}".r.replaceAllIn(s7, m => {
+      println(s"matched [[${m.matched}]]")
+      val s = m.matched.tail.tail // Remove "\\u"
+      val codePoint = Integer.parseInt(s, 16)
+      val chars = Character.toChars(codePoint)
+      new String(chars)
+    })
+    println(s"s = [[$s8]]")
+
+    s8
+  }
+
+  def jsonParser[Parser[+_]](P: Parsers[Parser]): Parser[JSON] = {
+    import P._
+    import JSON._
+
+    val spaces = char(' ').many.slice // TODO: we must ignore whitespace between all tokens.
+    val dquote = char('"')
+    val anyChar = """.""".r
+
+    implicit def moreOps[A](p: Parser[A]): MoreParserOps[A] = MoreParserOps[A](p)
+    case class MoreParserOps[A](p1: Parser[A]) {
+      def w: Parser[A] = p1 ** spaces map { case (r, _) => r } // XXX: ignore righy result
+    }
+
+    //val jsonString = dquote ** jsonStringBody ** dquote map { case ((_, s), _) => JString(s) }
+
+    val jsonString = (jsonStringRegex map { s => JString(hackJsonString(s)) }).w
+
+    val jsonNumber: Parser[JNumber] = jsonNumberRegex.map((s: String) => JNumber(s.toDouble)).w
+
+    case class JField(name: String, value: JSON)
+
+    def jsonValue = jsonString | jsonNumber | jsonObject | jsonArray | jsonTrue | jsonFalse | jsonNull
+
+    def jsonField = jsonString ** ":" ** jsonValue map { case ((name, _), value) =>
+        JField(name.get, value)
+    }
+
+    def surround[A, B](lbrace: Parser[A], rbrace: Parser[A])(body: Parser[B]): Parser[B] =
+      lbrace ** body ** rbrace map { case ((_, bodyResult), _) => { // XXX: ignore left and right results.
+        bodyResult
+      }}
+
+    def sepBy[A, B](sep: Parser[A], body: Parser[B]): Parser[List[B]] = {
+      lazy val rest = sep ** sepBy(sep, body) map { case (_, r) => r } // XXX: ignore left result.
+
+      body ** (rest | succeed(Nil)) map { case (b, bs) => b :: bs }
+    }
+
+    def jsonObject: Parser[JObject] = (surround("{", "}")(sepBy(",", jsonField)) map { fields =>
+      // XXX: Wonder what happens to duplicate names in the map? Here, the last value "wins".
+      // XXX: Should we reject them. Spec is unclear.
+      JObject(fields.map(f => f.name -> f.value).toMap)
+    }).w
+
+    def jsonArray: Parser[JArray] = (surround("[", "]")(sepBy(",", jsonValue)) map { v =>
+      JArray(v.toIndexedSeq)
+    }).w
+
+    def jsonTrue = string("true").map(_ => JBool(true)).w
+    def jsonFalse = string("false").map(_ => JBool(false)).w
+    def jsonNull = string("null").map(_ => JNull).w
+
+    val jsonRoot =
+      spaces ** (jsonObject | jsonArray) map { case (_, r) => r} // XXX: ignore right result.
+
+    jsonRoot
+  }
 }
