@@ -189,11 +189,14 @@ object JsonParsing {
     val dquote = char('"')
     val anyChar = """.""".r
 
-    def w[A](p1: Parser[A]): Parser[A] = p1 ** spaces map { case (r, _) => r } // XXX: Ignore right result.
+    def w[A](p1: Parser[A]): Parser[A] = p1 <* spaces
     def ws[A](p: Parser[A]) = w(p) // XXX: Just alias for calling from MoreParserOps.
 
     case class MoreParserOps[A](p1: Parser[A]) {
       def w: Parser[A] = ws(p1)
+
+      def *>[B](p2: Parser[B]) = p1 ** p2 map { case (_, r) => r } // Ignore left result.
+      def <*[B](p2: Parser[B]) = p1 ** p2 map { case (r, _) => r } // Ignore right result.
     }
     implicit def moreOps[A](p: Parser[A]): MoreParserOps[A] = MoreParserOps[A](p)
 
@@ -207,15 +210,15 @@ object JsonParsing {
 
     def jsonValue = jsonString | jsonNumber | jsonObject | jsonArray | jsonTrue | jsonFalse | jsonNull
 
-    def jsonField = jsonString ** w(":") ** jsonValue map { case ((name, _), value) =>
+    def jsonField = (jsonString <* w(":")) ** jsonValue map { case (name, value) =>
         JField(name.get, value)
     }
 
     def surround[A, B](lbrace: Parser[A], rbrace: Parser[A])(body: Parser[B]): Parser[B] =
-      lbrace ** body ** rbrace map { case ((_, bodyResult), _) => bodyResult } // XXX: Ignore left and right results.
+      lbrace *> body <* rbrace
 
     def sepBy[A, B](sep: Parser[A], body: Parser[B]): Parser[List[B]] = {
-      lazy val rest = sep ** sepBy(sep, body) map { case (_, r) => r } // XXX: Ignore left result.
+      lazy val rest = sep *> sepBy(sep, body)
 
       body ** (rest | succeed(Nil)) map { case (b, bs) => b :: bs }
     }
@@ -234,8 +237,7 @@ object JsonParsing {
     def jsonFalse = string("false").map(_ => JBool(false)).w
     def jsonNull = string("null").map(_ => JNull).w
 
-    val jsonRoot =
-      spaces ** (jsonObject | jsonArray) map { case (_, r) => r} // XXX: Ignore right result.
+    val jsonRoot = spaces *> (jsonObject | jsonArray)
 
     jsonRoot
   }
