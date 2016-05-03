@@ -189,8 +189,11 @@ object JsonParsing {
     val dquote = char('"')
     val anyChar = """.""".r
 
+    def w[A](p1: Parser[A]): Parser[A] = p1 ** spaces map { case (r, _) => r } // XXX: Ignore right result.
+    def ws[A](p: Parser[A]) = w(p) // XXX: Just alias for calling from MoreParserOps.
+
     case class MoreParserOps[A](p1: Parser[A]) {
-      def w: Parser[A] = p1 ** spaces map { case (r, _) => r } // XXX: Ignore right result.
+      def w: Parser[A] = ws(p1)
     }
     implicit def moreOps[A](p: Parser[A]): MoreParserOps[A] = MoreParserOps[A](p)
 
@@ -204,7 +207,7 @@ object JsonParsing {
 
     def jsonValue = jsonString | jsonNumber | jsonObject | jsonArray | jsonTrue | jsonFalse | jsonNull
 
-    def jsonField = jsonString ** ":" ** jsonValue map { case ((name, _), value) =>
+    def jsonField = jsonString ** w(":") ** jsonValue map { case ((name, _), value) =>
         JField(name.get, value)
     }
 
@@ -217,13 +220,13 @@ object JsonParsing {
       body ** (rest | succeed(Nil)) map { case (b, bs) => b :: bs }
     }
 
-    def jsonObject: Parser[JObject] = (surround("{", "}")(sepBy(",", jsonField)) map { fields =>
+    def jsonObject: Parser[JObject] = (surround(w("{"), w("}"))(sepBy(w(","), jsonField)) map { fields =>
       // XXX: Wonder what happens to duplicate names in the map? Here, the last value "wins".
       // XXX: Should we reject them. Spec is unclear.
       JObject(fields.map(f => f.name -> f.value).toMap)
     }).w
 
-    def jsonArray: Parser[JArray] = (surround("[", "]")(sepBy(",", jsonValue)) map { v =>
+    def jsonArray: Parser[JArray] = (surround(w("["), w("]"))(sepBy(w(","), jsonValue)) map { v =>
       JArray(v.toIndexedSeq)
     }).w
 
