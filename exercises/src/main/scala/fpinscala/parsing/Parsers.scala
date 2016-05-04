@@ -3,6 +3,7 @@ package fpinscala.parsing
 import scala.language.higherKinds
 import scala.language.implicitConversions
 import scala.util.matching.Regex
+import scala.util.matching.Regex.Match
 
 trait Parsers[Parser[+_]] { self =>
 
@@ -31,7 +32,7 @@ trait Parsers[Parser[+_]] { self =>
 
   // Non-primitives
 
-  def succeed[A](a: A): Parser[A] = string("") map (_ => a)
+  def succeed[A](a: A): Parser[A]
 
   def map[A, B](p: Parser[A])(f: A => B): Parser[B] = p.flatMap(f.andThen(succeed))
 
@@ -50,7 +51,7 @@ trait Parsers[Parser[+_]] { self =>
     string(c.toString) map (_.charAt(0))
 
   def many[A](p: Parser[A]): Parser[List[A]] =
-    map2(p, many(p)){case (r, rs) => r :: rs} | succeed(Nil)
+    map2(p, many(p)) { case (r, rs) => r :: rs } | succeed(Nil)
 
   def many1[A](p: Parser[A]): Parser[List[A]] =
     p ** many(p) map { case (r, rs) => r :: rs}
@@ -144,32 +145,62 @@ case class ParseError(stack: List[(Location, String)] = List(),
                       otherFailures: List[ParseError] = List()) {
 }
 
-class MyParser[+A]() {
-}
+case class MyParser[+A](f: String => Either[ParseError, (A, String)])
 
 object MyParsers extends Parsers[MyParser] {
-  override def string(s: String): MyParser[String] = ???
 
-  override def flatMap[A, B](p: MyParser[A])(f: (A) => MyParser[B]): MyParser[B] = ???
+  override def succeed[A](a: A): MyParser[A] = MyParser(input => Right(a, input))
 
-  override def or[A](p1: MyParser[A], p2: => MyParser[A]): MyParser[A] = ???
+  override def string(s: String): MyParser[String] = MyParser { input =>
+    println(s"string s=$s input=$input")
+    val r = if (input.startsWith(s)) Right((s, input.substring(s.length)))
+    else Left(ParseError(List((Location(input), s"Error matching string '$s'"))))
+    println(s"string r=$r")
+    r
+  }
 
-  override def errorMessage(e: ParseError): Location = ???
+  override def regex(r: Regex): MyParser[String] = MyParser { input =>
+    val maybeMatch: Option[Match] = r.findPrefixMatchOf(input)
+    if (maybeMatch.isEmpty) Left(ParseError(List((Location(input), s"Error regex '$r' did not match input '$input'"))))
+    else Right((maybeMatch.get.matched, maybeMatch.get.after.toString))
+  }
 
-  override def scope[A](msg: String)(p: MyParser[A]): MyParser[A] = ???
-
-  // Error utils
-  override def errorLocation(e: ParseError): Location = ???
-
-  override def run[A](p: MyParser[A])(input: String): Either[ParseError, A] = ???
-
-  override def regex(r: Regex): MyParser[String] = ???
-
+  // XXX: Don't think I can implement slice with my representation...
+  // Return the string consumed rather than the value parsed.
   override def slice[A](p: MyParser[A]): MyParser[String] = ???
 
   override def label[A](msg: String)(p: MyParser[A]): MyParser[A] = ???
 
+  override def scope[A](msg: String)(p: MyParser[A]): MyParser[A] = ???
+
+  override def flatMap[A, B](p: MyParser[A])(f: (A) => MyParser[B]): MyParser[B] = MyParser { input =>
+    println(s"MyParsers.flatMap input=$input")
+    val r: Either[ParseError, (A, String)] = p.f(input)
+    println(s"MyParsers.flatMap r=$r")
+    r.right.flatMap { case (a, remainingInput) =>
+      println(s"MyParsers.flatMap a=$a remainingInput=$remainingInput")
+      val parserB: MyParser[B] = f(a)
+      val r1: Either[ParseError, (B, String)] = parserB.f(remainingInput)
+      println(s"MyParsers.flatMap r1=$r1")
+      r1
+    }
+  }
+
   override def attempt[A](p: MyParser[A]): MyParser[A] = ???
+
+  override def or[A](p1: MyParser[A], p2: => MyParser[A]): MyParser[A] = MyParser { input =>
+    val r = p1.f(input)
+    if (r.isLeft) p2.f(input) else r
+  }
+
+  // Error utils
+  override def errorMessage(e: ParseError): Location = ???
+
+  override def errorLocation(e: ParseError): Location = ???
+
+  // Other
+  override def run[A](p: MyParser[A])(input: String): Either[ParseError, A] =
+    p.f(input).right.map { case (a, remaining) => a }
 }
 
 object JsonParsing {
@@ -231,7 +262,7 @@ object JsonParsing {
     import P._
     import JSON._
 
-    val spaces = char(' ').many.slice
+    val spaces = char(' ').many //.slice    // XXX: Do we need slice?
     val dquote = char('"')
     val anyChar = """.""".r
 
@@ -266,11 +297,11 @@ object JsonParsing {
     def sepBy[A, B](sep: Parser[A], body: Parser[B]): Parser[List[B]] = {
       lazy val rest = sep *> sepBy(sep, body)
 
-      body ** (rest | succeed(Nil)) map { case (b, bs) => b :: bs }
+      (body ** (rest | succeed(Nil)) map { case (b, bs) => b :: bs }) | succeed(Nil)
     }
 
     def jsonObject: Parser[JObject] = (surround(w("{"), w("}"))(sepBy(w(","), jsonField)) map { fields =>
-      // XXX: Wonder what happens to duplicate names in the map? Here, the last value "wins".
+      // XXX: What happens to duplicate names in the map? Here, the last value "wins".
       // XXX: Should we reject them. Spec is unclear.
       JObject(fields.map(f => f.name -> f.value).toMap)
     }).w
@@ -283,8 +314,12 @@ object JsonParsing {
     def jsonFalse = string("false").map(_ => JBool(false)).w
     def jsonNull = string("null").map(_ => JNull).w
 
-    val jsonRoot = spaces *> (jsonObject | jsonArray)
+    val jsonRoot = spaces *> (jsonArray | jsonObject)
 
     jsonRoot
   }
+
+  // For console testing.
+  val p = jsonParser(MyParsers)
+  val x = (input: String) => MyParsers.run(p)(input)
 }
