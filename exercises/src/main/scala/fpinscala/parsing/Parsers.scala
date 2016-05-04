@@ -148,6 +148,8 @@ case class Location(input: String, offset: Int = 0) {
     else ""
 }
 
+// FIX: Error location are not working. Appears to have location 0 always.
+// XXX: My representation does not keep the entire string to parse (currently)...
 case class ParseError(
   stack: List[(Location, String)] = List(),
   otherFailures: List[ParseError] = List()
@@ -163,24 +165,26 @@ case class ParseError(
   }
 }
 
-case class MyParser[+A](f: String => Either[ParseError, (A, String)], errMsg: Option[String] = None)
+case class State(input: String)
+
+case class MyParser[+A](f: State => Either[ParseError, (A, State)], errMsg: Option[String] = None)
 
 object MyParsers extends Parsers[MyParser] {
 
-  override def succeed[A](a: A): MyParser[A] = MyParser(input => Right(a, input))
+  override def succeed[A](a: A): MyParser[A] = MyParser(state => Right(a, state))
 
-  override def string(s: String): MyParser[String] = MyParser { input =>
-    println(s"string s=$s input=$input")
-    val r = if (input.startsWith(s)) Right((s, input.substring(s.length)))
-    else Left(ParseError(List((Location(input), s"Error matching string '$s'"))))
+  override def string(s: String): MyParser[String] = MyParser { state =>
+    println(s"string s=$s state=$state")
+    val r = if (state.input.startsWith(s)) Right((s, state.copy(state.input.substring(s.length))))
+    else Left(ParseError(List((Location(state.input), s"Error matching string '$s'"))))
     println(s"string r=$r")
     r
   }
 
-  override def regex(r: Regex): MyParser[String] = MyParser { input =>
-    val maybeMatch: Option[Match] = r.findPrefixMatchOf(input)
-    if (maybeMatch.isEmpty) Left(ParseError(List((Location(input), s"Error regex '$r' did not match input '$input'"))))
-    else Right((maybeMatch.get.matched, maybeMatch.get.after.toString))
+  override def regex(r: Regex): MyParser[String] = MyParser { state =>
+    val maybeMatch: Option[Match] = r.findPrefixMatchOf(state.input)
+    if (maybeMatch.isEmpty) Left(ParseError(List((Location(state.input), s"Error regex '$r' did not match input '$state.input'"))))
+    else Right((maybeMatch.get.matched, state.copy(input = maybeMatch.get.after.toString)))
   }
 
   // XXX: Don't think I can implement slice with my representation...
@@ -195,14 +199,14 @@ object MyParsers extends Parsers[MyParser] {
     p.f(input).left.map(_.scope(msg))
   }
 
-  override def flatMap[A, B](p: MyParser[A])(f: (A) => MyParser[B]): MyParser[B] = MyParser { input =>
-    println(s"MyParsers.flatMap input=$input")
-    val r: Either[ParseError, (A, String)] = p.f(input)
+  override def flatMap[A, B](p: MyParser[A])(f: (A) => MyParser[B]): MyParser[B] = MyParser { state =>
+    println(s"MyParsers.flatMap input=$state.input")
+    val r: Either[ParseError, (A, State)] = p.f(state)
     println(s"MyParsers.flatMap r=$r")
-    r.right.flatMap { case (a, remainingInput) =>
-      println(s"MyParsers.flatMap a=$a remainingInput=$remainingInput")
+    r.right.flatMap { case (a, bState) =>
+      println(s"MyParsers.flatMap a=$a remainingInput=$bState.input")
       val parserB: MyParser[B] = f(a)
-      val r1: Either[ParseError, (B, String)] = parserB.f(remainingInput)
+      val r1: Either[ParseError, (B, State)] = parserB.f(bState)
       println(s"MyParsers.flatMap r1=$r1")
       r1
     }
@@ -215,9 +219,9 @@ object MyParsers extends Parsers[MyParser] {
     if (r.isLeft) p2.f(input) else r
   }
 
-  override def eof: MyParser[Unit] = MyParser { input =>
-    if (input.isEmpty) Right((), input)
-    else Left(ParseError(List((Location(input), s"Expected eof but got '$input'"))))
+  override def eof: MyParser[Unit] = MyParser { state =>
+    if (state.input.isEmpty) Right((), state)
+    else Left(ParseError(List((Location(state.input), s"Expected eof but got '$state.input'"))))
   }
 
   // Error utils
@@ -227,7 +231,7 @@ object MyParsers extends Parsers[MyParser] {
 
   // Other
   override def run[A](p: MyParser[A])(input: String): Either[ParseError, A] =
-    p.f(input).right.map { case (a, remaining) => a }
+    p.f(State(input)).right.map { case (a, remaining) => a }
 }
 
 object JsonParsing {
