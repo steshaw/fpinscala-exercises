@@ -144,6 +144,34 @@ case class ParseError(stack: List[(Location, String)] = List(),
                       otherFailures: List[ParseError] = List()) {
 }
 
+class MyParser[+A]() {
+}
+
+object MyParsers extends Parsers[MyParser] {
+  override def string(s: String): MyParser[String] = ???
+
+  override def flatMap[A, B](p: MyParser[A])(f: (A) => MyParser[B]): MyParser[B] = ???
+
+  override def or[A](p1: MyParser[A], p2: => MyParser[A]): MyParser[A] = ???
+
+  override def errorMessage(e: ParseError): Location = ???
+
+  override def scope[A](msg: String)(p: MyParser[A]): MyParser[A] = ???
+
+  // Error utils
+  override def errorLocation(e: ParseError): Location = ???
+
+  override def run[A](p: MyParser[A])(input: String): Either[ParseError, A] = ???
+
+  override def regex(r: Regex): MyParser[String] = ???
+
+  override def slice[A](p: MyParser[A]): MyParser[String] = ???
+
+  override def label[A](msg: String)(p: MyParser[A]): MyParser[A] = ???
+
+  override def attempt[A](p: MyParser[A]): MyParser[A] = ???
+}
+
 object JsonParsing {
 
   trait JSON
