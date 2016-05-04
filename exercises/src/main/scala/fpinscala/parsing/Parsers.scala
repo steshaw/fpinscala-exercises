@@ -352,3 +352,21 @@ object JsonParsing {
   val p = jsonParser(MyParsers)
   val x = (input: String) => MyParsers.run(p)(input)
 }
+
+object Examples {
+  def example1[Parser[+_]](P: Parsers[Parser])= {
+    import P._
+
+    val spaces = " ".many
+    val p1 = scope("magic spell") {
+      "abra" ** spaces ** "cadabra"
+    }
+    val p2 = scope("gibberish") {
+      "abba" ** spaces ** "babba"
+    }
+    val p = p1 | p2
+    run(p)("abra cAdabra")
+  }
+
+  val eg1 = example1(MyParsers)
+}
