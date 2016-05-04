@@ -14,13 +14,24 @@ trait Parsers[Parser[+_]] { self =>
 
   def slice[A](p: Parser[A]): Parser[String]
 
-  def succeed[A](a: A): Parser[A] = string("") map (_ => a) // XXX: actually not primitive
+  def label[A](msg: String)(p: Parser[A]): Parser[A]
+
+  def scope[A](msg: String)(p: Parser[A]): Parser[A]
 
   def flatMap[A, B](p: Parser[A])(f: A => Parser[B]): Parser[B]
 
+  def attempt[A](p: Parser[A]): Parser[A] // Allow explicit backtracking ala Parsec.
+
   def or[A](p1: Parser[A], p2: => Parser[A]): Parser[A]
 
+  // Error utils
+  def errorLocation(e: ParseError): Location
+
+  def errorMessage(e: ParseError): Location
+
   // Non-primitives
+
+  def succeed[A](a: A): Parser[A] = string("") map (_ => a)
 
   def map[A, B](p: Parser[A])(f: A => B): Parser[B] = p.flatMap(f.andThen(succeed))
 
@@ -92,6 +103,14 @@ trait Parsers[Parser[+_]] { self =>
 
     // Product is associative.
     // def productAssociativeProp = (a ** b) ** c == a ** (b ** c)
+
+//    def labelLaw[A](p: Parser[A], inputs: SGen[String]): Prop =
+//      forAll(inputs ** Gen.string) { case (input, msg) =>
+//        run(label(msg)(p))(input) match {
+//          case Left(e) => errorMessage(e) == msg
+//          case _ => true
+//        }
+//      }
   }
 
   trait Usage {
@@ -107,7 +126,6 @@ trait Parsers[Parser[+_]] { self =>
 }
 
 case class Location(input: String, offset: Int = 0) {
-
   lazy val line = input.slice(0, offset + 1).count(_ == '\n') + 1
   lazy val col = input.slice(0, offset + 1).reverse.indexOf('\n')
 
