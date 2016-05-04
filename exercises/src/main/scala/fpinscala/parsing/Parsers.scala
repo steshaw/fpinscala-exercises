@@ -52,8 +52,11 @@ trait Parsers[Parser[+_]] { self =>
   def char(c: Char): Parser[Char] =
     string(c.toString) map (_.charAt(0))
 
+  def optional[A](p: Parser[A], default: A) =
+    p | succeed(default)
+
   def many[A](p: Parser[A]): Parser[List[A]] =
-    many1(p) | succeed(Nil)
+    many1(p) ? Nil
 
   def many1[A](p: Parser[A]): Parser[List[A]] =
     map2(p, many(p)) { (r, rs) => r :: rs}
@@ -79,6 +82,8 @@ trait Parsers[Parser[+_]] { self =>
     def |[B >: A](p2: => Parser[B]) = or(p1, p2)
 
     def **[B](p2: => Parser[B]) = product(p1, p2)
+
+    def ?(default: A) = optional(p1, default)
 
     def many = self.many(p1)
 
@@ -306,7 +311,7 @@ object JsonParsing {
     def sepBy[A, B](sep: Parser[A], body: Parser[B]): Parser[List[B]] = {
       lazy val rest = sep *> sepBy(sep, body)
 
-      (body ** (rest | succeed(Nil)) map { case (b, bs) => b :: bs }) | succeed(Nil)
+      (body ** (rest ? Nil) map { case (b, bs) => b :: bs }) ? Nil
     }
 
     def jsonObject: Parser[JObject] = (surround(w("{"), w("}"))(sepBy(w(","), jsonField)) map { fields =>
