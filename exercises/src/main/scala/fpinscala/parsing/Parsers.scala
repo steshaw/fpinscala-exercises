@@ -28,9 +28,9 @@ trait Parsers[Parser[+_]] { self =>
   def eof: Parser[Unit]
 
   // Error utils
-  def errorLocation(e: ParseError): Location
+  def errorMessage(e: ParseError): String
 
-  def errorMessage(e: ParseError): Location
+  def errorLocation(e: ParseError): Location
 
   // Non-primitives
 
@@ -148,11 +148,22 @@ case class Location(input: String, offset: Int = 0) {
     else ""
 }
 
-case class ParseError(stack: List[(Location, String)] = List(),
-                      otherFailures: List[ParseError] = List()) {
+case class ParseError(
+  stack: List[(Location, String)] = List(),
+  otherFailures: List[ParseError] = List()
+) {
+  def label(errMsg: String): ParseError = {
+    val location = stack.head._1
+    copy(stack = List((location, errMsg)))
+  }
+  def scope(errMsg: String): ParseError = {
+    val prevStack = stack
+    val location = stack.head._1 // FIX: probably wrong
+    copy(stack = (location, errMsg) :: prevStack)
+  }
 }
 
-case class MyParser[+A](f: String => Either[ParseError, (A, String)])
+case class MyParser[+A](f: String => Either[ParseError, (A, String)], errMsg: Option[String] = None)
 
 object MyParsers extends Parsers[MyParser] {
 
@@ -176,9 +187,13 @@ object MyParsers extends Parsers[MyParser] {
   // Return the string consumed rather than the value parsed.
   override def slice[A](p: MyParser[A]): MyParser[String] = ???
 
-  override def label[A](msg: String)(p: MyParser[A]): MyParser[A] = ???
+  override def label[A](msg: String)(p: MyParser[A]): MyParser[A] = MyParser { input =>
+    p.f(input).left.map(_.label(msg))
+  }
 
-  override def scope[A](msg: String)(p: MyParser[A]): MyParser[A] = ???
+  override def scope[A](msg: String)(p: MyParser[A]): MyParser[A] = MyParser { input =>
+    p.f(input).left.map(_.scope(msg))
+  }
 
   override def flatMap[A, B](p: MyParser[A])(f: (A) => MyParser[B]): MyParser[B] = MyParser { input =>
     println(s"MyParsers.flatMap input=$input")
@@ -206,9 +221,9 @@ object MyParsers extends Parsers[MyParser] {
   }
 
   // Error utils
-  override def errorMessage(e: ParseError): Location = ???
+  override def errorMessage(e: ParseError): String = e.stack.head._2
 
-  override def errorLocation(e: ParseError): Location = ???
+  override def errorLocation(e: ParseError): Location = e.stack.head._1
 
   // Other
   override def run[A](p: MyParser[A])(input: String): Either[ParseError, A] =
@@ -314,13 +329,13 @@ object JsonParsing {
       (body ** (rest ? Nil) map { case (b, bs) => b :: bs }) ? Nil
     }
 
-    def jsonObject: Parser[JObject] = (surround(w("{"), w("}"))(sepBy(w(","), jsonField)) map { fields =>
+    def jsonObject: Parser[JObject] = scope("Parsing JSON Object")(surround(w("{"), w("}"))(sepBy(w(","), jsonField)) map { fields =>
       // XXX: What happens to duplicate names in the map? Here, the last value "wins".
       // XXX: Should we reject them. Spec is unclear.
       JObject(fields.map(f => f.name -> f.value).toMap)
     }).w
 
-    def jsonArray: Parser[JArray] = (surround(w("["), w("]"))(sepBy(w(","), jsonValue)) map { v =>
+    def jsonArray: Parser[JArray] = scope("Parsing JSON Array")(surround(w("["), w("]"))(sepBy(w(","), jsonValue)) map { v =>
       JArray(v.toIndexedSeq)
     }).w
 
@@ -328,7 +343,7 @@ object JsonParsing {
     def jsonFalse = string("false").map(_ => JBool(false)).w
     def jsonNull = string("null").map(_ => JNull).w
 
-    val jsonRoot = spaces *> (jsonArray | jsonObject) <* eof
+    val jsonRoot = scope("Invalid root element")(spaces *> (jsonArray | jsonObject)) <* eof
 
     jsonRoot
   }
