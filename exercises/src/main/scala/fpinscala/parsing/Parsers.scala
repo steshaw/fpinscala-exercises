@@ -133,7 +133,7 @@ trait Parsers[Parser[+_]] { self =>
   }
 }
 
-case class Location(input: String, offset: Int = 0) {
+case class Location(input: String, offset: Int) {
   lazy val line = input.slice(0, offset + 1).count(_ == '\n') + 1
   lazy val col = input.slice(0, offset + 1).reverse.indexOf('\n')
 
@@ -148,8 +148,6 @@ case class Location(input: String, offset: Int = 0) {
     else ""
 }
 
-// FIX: Error location are not working. Appears to have location 0 always.
-// XXX: My representation does not keep the entire string to parse (currently)...
 case class ParseError(
   stack: List[(Location, String)] = List(),
   otherFailures: List[ParseError] = List()
@@ -165,7 +163,7 @@ case class ParseError(
   }
 }
 
-case class State(input: String)
+case class State(entireInput: String, input: String, offset: Int = 0)
 
 case class MyParser[+A](f: State => Either[ParseError, (A, State)], errMsg: Option[String] = None)
 
@@ -175,16 +173,23 @@ object MyParsers extends Parsers[MyParser] {
 
   override def string(s: String): MyParser[String] = MyParser { state =>
     println(s"string s=$s state=$state")
-    val r = if (state.input.startsWith(s)) Right((s, state.copy(state.input.substring(s.length))))
-    else Left(ParseError(List((Location(state.input), s"Error matching string '$s'"))))
+    val r = if (state.input.startsWith(s))
+      Right((s, state.copy(input = state.input.substring(s.length), offset = state.offset + s.length)))
+    else
+      Left(ParseError(List((Location(state.input, state.offset), s"Error matching string '$s'"))))
     println(s"string r=$r")
     r
   }
 
   override def regex(r: Regex): MyParser[String] = MyParser { state =>
     val maybeMatch: Option[Match] = r.findPrefixMatchOf(state.input)
-    if (maybeMatch.isEmpty) Left(ParseError(List((Location(state.input), s"Error regex '$r' did not match input '$state.input'"))))
-    else Right((maybeMatch.get.matched, state.copy(input = maybeMatch.get.after.toString)))
+    if (maybeMatch.isEmpty)
+      Left(ParseError(List((Location(state.input, state.offset), s"Error regex '$r' did not match input '$state.input'"))))
+    else {
+      val matched = maybeMatch.get.matched
+      val remaining: String = maybeMatch.get.after.toString
+      Right((matched, state.copy(input = remaining, offset = state.offset + matched.length)))
+    }
   }
 
   // XXX: Don't think I can implement slice with my representation...
@@ -221,7 +226,7 @@ object MyParsers extends Parsers[MyParser] {
 
   override def eof: MyParser[Unit] = MyParser { state =>
     if (state.input.isEmpty) Right((), state)
-    else Left(ParseError(List((Location(state.input), s"Expected eof but got '$state.input'"))))
+    else Left(ParseError(List((Location(state.input, state.offset), s"Expected eof but got '$state.input'"))))
   }
 
   // Error utils
@@ -231,7 +236,7 @@ object MyParsers extends Parsers[MyParser] {
 
   // Other
   override def run[A](p: MyParser[A])(input: String): Either[ParseError, A] =
-    p.f(State(input)).right.map { case (a, remaining) => a }
+    p.f(State(input, input)).right.map { case (a, remaining) => a }
 }
 
 object JsonParsing {
