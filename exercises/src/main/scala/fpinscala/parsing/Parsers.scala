@@ -25,6 +25,8 @@ trait Parsers[Parser[+_]] { self =>
 
   def or[A](p1: Parser[A], p2: => Parser[A]): Parser[A]
 
+  def eof: Parser[Unit]
+
   // Error utils
   def errorLocation(e: ParseError): Location
 
@@ -193,6 +195,11 @@ object MyParsers extends Parsers[MyParser] {
     if (r.isLeft) p2.f(input) else r
   }
 
+  override def eof: MyParser[Unit] = MyParser { input =>
+    if (input.isEmpty) Right((), input)
+    else Left(ParseError(List((Location(input), s"Expected eof but got '$input'"))))
+  }
+
   // Error utils
   override def errorMessage(e: ParseError): Location = ???
 
@@ -316,7 +323,7 @@ object JsonParsing {
     def jsonFalse = string("false").map(_ => JBool(false)).w
     def jsonNull = string("null").map(_ => JNull).w
 
-    val jsonRoot = spaces *> (jsonArray | jsonObject)
+    val jsonRoot = spaces *> (jsonArray | jsonObject) <* eof
 
     jsonRoot
   }
