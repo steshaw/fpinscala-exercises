@@ -51,10 +51,10 @@ trait Parsers[Parser[+_]] { self =>
     string(c.toString) map (_.charAt(0))
 
   def many[A](p: Parser[A]): Parser[List[A]] =
-    map2(p, many(p)) { case (r, rs) => r :: rs } | succeed(Nil)
+    many1(p) | succeed(Nil)
 
   def many1[A](p: Parser[A]): Parser[List[A]] =
-    p ** many(p) map { case (r, rs) => r :: rs}
+    map2(p, many(p)) { (r, rs) => r :: rs}
 
   def listOfN[A](n: Int, p: Parser[A]): Parser[List[A]] =
     if (n <= 0) succeed(Nil)
@@ -262,7 +262,9 @@ object JsonParsing {
     import P._
     import JSON._
 
-    val spaces = char(' ').many //.slice    // XXX: Do we need slice?
+    // XXX: Do we need slice here?
+    // FIX: What's the definition of "spaces" in the spec?
+    val spaces = (char(' ') | char('\t') | char('\n')).many //.slice    // XXX: Do we need slice?
     val dquote = char('"')
     val anyChar = """.""".r
 
