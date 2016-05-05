@@ -161,14 +161,13 @@ case class ParseError(
     val location = stack.head._1
     copy(stack = List((location, errMsg)))
   }
-  def scope(errMsg: String): ParseError = {
-    val prevStack = stack
-    val location = stack.head._1 // FIX: probably wrong
-    copy(stack = (location, errMsg) :: prevStack)
-  }
+  def push(msg: String, location: Location): ParseError =
+    copy(stack = (location, msg) :: stack)
 }
 
-case class State(entireInput: String, input: String, offset: Int = 0)
+case class State(entireInput: String, input: String, offset: Int = 0) {
+  def location = Location(entireInput, offset)
+}
 
 case class MyParser[+A](f: State => Either[ParseError, (A, State)], errMsg: Option[String] = None)
 
@@ -209,8 +208,8 @@ object MyParsers extends Parsers[MyParser] {
     p.f(input).left.map(_.label(msg))
   }
 
-  override def scope[A](msg: String)(p: MyParser[A]): MyParser[A] = MyParser { input =>
-    p.f(input).left.map(_.scope(msg))
+  override def scope[A](msg: String)(p: MyParser[A]): MyParser[A] = MyParser { state =>
+    p.f(state).left.map(_.push(msg, state.location))
   }
 
   override def flatMap[A, B](p: MyParser[A])(f: (A) => MyParser[B]): MyParser[B] = MyParser { state =>
