@@ -196,9 +196,15 @@ object MyParsers extends Parsers[MyParser] {
     }
   }
 
-  // XXX: Don't think I can implement slice with my representation...
   // Return the string consumed rather than the value parsed.
-  override def slice[A](p: MyParser[A]): MyParser[String] = ???
+  override def slice[A](p: MyParser[A]): MyParser[String] = MyParser { state1 =>
+    val r: Either[ParseError, (A, State)] = p.f(state1)
+    r.right.map { case (a, state2) =>
+      val start = state1.offset
+      val end = state2.offset
+      (state1.entireInput.substring(start, end), state2)
+    }
+  }
 
   override def label[A](msg: String)(p: MyParser[A]): MyParser[A] = MyParser { input =>
     p.f(input).left.map(_.label(msg))
@@ -290,9 +296,8 @@ object JsonParsing {
     import P._
     import JSON._
 
-    // XXX: Do we need slice here?
     // FIX: What's the definition of "spaces" in the spec?
-    val spaces = (char(' ') | char('\t') | char('\n')).many //.slice    // XXX: Do we need slice?
+    val spaces = (char(' ') | char('\t') | char('\n')).many.slice
     val dquote = char('"')
     val anyChar = """.""".r
 
@@ -383,4 +388,11 @@ object Examples {
     run(p)(input)
   }
   val eg3 = example3(MyParsers) _
+
+  def spacesP[Parser[+_]](P: Parsers[Parser])(input: String) = {
+    import P._
+    val spaces = (char(' ') | char('\t') | char('\n')).many.slice
+    run(spaces)(input)
+  }
+  val spaces = spacesP(MyParsers) _
 }
