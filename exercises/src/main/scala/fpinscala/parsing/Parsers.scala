@@ -193,8 +193,14 @@ case class ParseError(
   }
 }
 
-case class State(entireInput: String, input: String, offset: Int = 0) {
+case class State(
+  entireInput: String,
+  input: String,
+  offset: Int = 0,
+  slicing: Boolean = false
+) {
   def location = Location(entireInput, offset)
+  def slice(newValue: Boolean) = copy(slicing = newValue)
 }
 
 case class MyParser[+A](f: State => Either[ParseError, (A, State)], errMsg: Option[String] = None)
@@ -236,11 +242,10 @@ object MyParsers extends Parsers[MyParser] {
 
   // Return the string consumed rather than the value parsed.
   override def slice[A](p: MyParser[A]): MyParser[String] = MyParser { state1 =>
-    val r: Either[ParseError, (A, State)] = p.f(state1)
-    r.right.map { case (a, state2) =>
+    p.f(state1.slice(true)).right.map { case (a, state2) =>
       val start = state1.offset
       val end = state2.offset
-      (state1.entireInput.substring(start, end), state2)
+      (state1.entireInput.substring(start, end), state2.slice(false))
     }
   }
 
@@ -273,6 +278,15 @@ object MyParsers extends Parsers[MyParser] {
   override def eof: MyParser[Unit] = MyParser { state =>
     if (state.input.isEmpty) Right((), state)
     else Left(state.location.toError(s"Expected eof but got '${state.input}'"))
+  }
+
+  override def many1[A](p: Parser[A]): Parser[List[A]] = MyParser { state =>
+    val cons: (A, List[A]) => List[A] =
+      if (state.slicing)
+        (_, _) => Nil     // When slicing, we do not want to build up the result list.
+      else
+        _ :: _            // ... otherwise cons as usual.
+    map2(p, many(p))(cons).f(state)
   }
 
   // Error utils
