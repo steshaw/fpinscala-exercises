@@ -352,19 +352,18 @@ object JsonParsing {
     def surround[A, B](lbrace: Parser[A], rbrace: Parser[A])(body: Parser[B]): Parser[B] =
       lbrace *> body <* rbrace
 
-    // FIX: Trailing comma is accepted. e.g. "[1,]"
     def sepBy[A, B](sep: Parser[A], body: Parser[B]): Parser[List[B]] = {
       lazy val rest = sep *> sepBy(sep, body)
 
-      (body ** (rest ? Nil) map { case (b, bs) => b :: bs }) ? Nil
+      body ** (rest ? Nil) map { case (b, bs) => b :: bs }
     }
 
-    def jsonObject: Parser[JObject] = scope("JSON Object")(surround(ws("{"), ws("}"))(sepBy(ws(","), jsonField)) map { fields =>
+    def jsonObject: Parser[JObject] = scope("JSON Object")(surround(ws("{"), ws("}"))(sepBy(ws(","), jsonField) ? Nil) map { fields =>
       // NOTE: The spec says that the names should be unique. Here the last k/v pair "wins".
       JObject(fields.map(f => f.name -> f.value).toMap)
     }).w
 
-    def jsonArray: Parser[JArray] = scope("JSON Array")(surround(ws("["), ws("]"))(sepBy(ws(","), jsonValue)) map { v =>
+    def jsonArray: Parser[JArray] = scope("JSON Array")(surround(ws("["), ws("]"))(sepBy(ws(","), jsonValue) ? Nil) map { v =>
       JArray(v.toIndexedSeq)
     }).w
 
