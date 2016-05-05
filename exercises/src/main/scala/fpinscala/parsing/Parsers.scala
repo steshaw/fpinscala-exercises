@@ -83,6 +83,10 @@ trait Parsers[Parser[+_]] { self =>
 
     def **[B](p2: => Parser[B]) = product(p1, p2)
 
+    def *>[B](p2: Parser[B]) = p1 ** p2 map { case (_, r) => r } // Ignore left result.
+
+    def <*[B](p2: Parser[B]) = p1 ** p2 map { case (r, _) => r } // Ignore right result.
+
     def ?(default: A) = optional(p1, default)
 
     def many = self.many(p1)
@@ -150,7 +154,8 @@ case class Location(input: String, offset: Int) {
 
 case class ParseError(
   stack: List[(Location, String)] = List(),
-  otherFailures: List[ParseError] = List()
+  otherFailures: List[ParseError] = List(),
+  isCommitted: Boolean = false
 ) {
   def label(errMsg: String): ParseError = {
     val location = stack.head._1
@@ -172,19 +177,18 @@ object MyParsers extends Parsers[MyParser] {
   override def succeed[A](a: A): MyParser[A] = MyParser(state => Right(a, state))
 
   override def string(s: String): MyParser[String] = MyParser { state =>
-    println(s"string s=$s state=$state")
     val r = if (state.input.startsWith(s))
       Right((s, state.copy(input = state.input.substring(s.length), offset = state.offset + s.length)))
     else
       Left(ParseError(List((Location(state.input, state.offset), s"Error matching string '$s'"))))
-    println(s"string r=$r")
     r
   }
 
   override def regex(r: Regex): MyParser[String] = MyParser { state =>
     val maybeMatch: Option[Match] = r.findPrefixMatchOf(state.input)
     if (maybeMatch.isEmpty)
-      Left(ParseError(List((Location(state.input, state.offset), s"Error regex '$r' did not match input '$state.input'"))))
+      Left(ParseError(List((Location(state.input, state.offset),
+        s"Error regex '$r' did not match input '${state.input}'"))))
     else {
       val matched = maybeMatch.get.matched
       val remaining: String = maybeMatch.get.after.toString
@@ -205,28 +209,26 @@ object MyParsers extends Parsers[MyParser] {
   }
 
   override def flatMap[A, B](p: MyParser[A])(f: (A) => MyParser[B]): MyParser[B] = MyParser { state =>
-    println(s"MyParsers.flatMap input=$state.input")
-    val r: Either[ParseError, (A, State)] = p.f(state)
-    println(s"MyParsers.flatMap r=$r")
-    r.right.flatMap { case (a, bState) =>
-      println(s"MyParsers.flatMap a=$a remainingInput=$bState.input")
-      val parserB: MyParser[B] = f(a)
-      val r1: Either[ParseError, (B, State)] = parserB.f(bState)
-      println(s"MyParsers.flatMap r1=$r1")
-      r1
+    p.f(state).right.flatMap { case (a, bState) =>
+      f(a).f(bState).left.map(_.copy(isCommitted = true))
     }
   }
 
-  override def attempt[A](p: MyParser[A]): MyParser[A] = ???
+  override def attempt[A](p: MyParser[A]): MyParser[A] = MyParser { state =>
+    val r1 = p.f(state)
+    r1.left.map(_.copy(isCommitted = false))
+  }
 
   override def or[A](p1: MyParser[A], p2: => MyParser[A]): MyParser[A] = MyParser { input =>
     val r = p1.f(input)
-    if (r.isLeft) p2.f(input) else r
+    // FIX: use of Either.isLeft and Either.get
+    if (r.isLeft && !r.left.get.isCommitted) p2.f(input) else r
   }
 
   override def eof: MyParser[Unit] = MyParser { state =>
     if (state.input.isEmpty) Right((), state)
-    else Left(ParseError(List((Location(state.input, state.offset), s"Expected eof but got '$state.input'"))))
+    else Left(ParseError(
+      List((Location(state.input, state.offset), s"Expected eof but got '${state.input}'"))))
   }
 
   // Error utils
@@ -259,37 +261,27 @@ object JsonParsing {
   val hackJsonString = (s: String) => {
     // XXX: What horrible hacks has our jsonStringRegex caused us to consider?!?
 
-    println(s"s = [[$s]]")
     // Remove double quotes.
     val s1 = s.replaceFirst("^\"", "")
-    println(s"s1 = [[$s1]]")
     val s2 = s1.replaceFirst("\"$", "")
-    println(s"s2 = [[$s2]]")
 
     // NOTE: "\\x5C" is "\". This is so that we can match literal "\" as a regex.
 
     // Replace control escapes.
     val s3 = s2.replaceAll("\\x5C\\x62", "\b") // "\\x62" is "b"
-    println(s"s3 = [[$s3]]")
     val s4 = s3.replaceAll("\\x5C\\x66", "\f") // "\\x66" is "f"
-    println(s"s4 = [[$s4]]")
     val s5 = s4.replaceAll("\\x5C\\x6E", "\n") // "\\x6E" is "n"
-    println(s"s5 = [[$s5]]")
     val s6 = s5.replaceAll("\\x5C\\x72", "\r") // "\\x72" is "r"
-    println(s"s6 = [[$s6]]")
     val s7 = s6.replaceAll("\\x5C\\x74", "\t") // "\\x74" is "t"
-    println(s"s7 = [[$s7]]")
 
     // Replace unicode escapes.
     // NOTE: "\\x75" is the same as "u". This is done to avoid being an incorrect unicode matching expression.
     val s8 = "\\x5C\\x75[0-9a-fA-F]{4}".r.replaceAllIn(s7, m => {
-      println(s"matched [[${m.matched}]]")
       val s = m.matched.tail.tail // Remove "\\u"
       val codePoint = Integer.parseInt(s, 16)
       val chars = Character.toChars(codePoint)
       new String(chars)
     })
-    println(s"s = [[$s8]]")
 
     s8
   }
@@ -309,9 +301,6 @@ object JsonParsing {
 
     case class MoreParserOps[A](p1: Parser[A]) {
       def w: Parser[A] = ws(p1)
-
-      def *>[B](p2: Parser[B]) = p1 ** p2 map { case (_, r) => r } // Ignore left result.
-      def <*[B](p2: Parser[B]) = p1 ** p2 map { case (r, _) => r } // Ignore right result.
     }
     implicit def moreOps[A](p: Parser[A]): MoreParserOps[A] = MoreParserOps[A](p)
 
@@ -325,6 +314,7 @@ object JsonParsing {
 
     def jsonValue = jsonString | jsonNumber | jsonObject | jsonArray | jsonTrue | jsonFalse | jsonNull
 
+    // TODO: Should empty field names be rejected? i.e. ""
     def jsonField = (jsonString <* w(":")) ** jsonValue map { case (name, value) =>
         JField(name.get, value)
     }
@@ -338,13 +328,13 @@ object JsonParsing {
       (body ** (rest ? Nil) map { case (b, bs) => b :: bs }) ? Nil
     }
 
-    def jsonObject: Parser[JObject] = scope("Parsing JSON Object")(surround(w("{"), w("}"))(sepBy(w(","), jsonField)) map { fields =>
+    def jsonObject: Parser[JObject] = scope("JSON Object")(surround(w("{"), w("}"))(sepBy(w(","), jsonField)) map { fields =>
       // XXX: What happens to duplicate names in the map? Here, the last value "wins".
       // XXX: Should we reject them. Spec is unclear.
       JObject(fields.map(f => f.name -> f.value).toMap)
     }).w
 
-    def jsonArray: Parser[JArray] = scope("Parsing JSON Array")(surround(w("["), w("]"))(sepBy(w(","), jsonValue)) map { v =>
+    def jsonArray: Parser[JArray] = scope("JSON Array")(surround(w("["), w("]"))(sepBy(w(","), jsonValue)) map { v =>
       JArray(v.toIndexedSeq)
     }).w
 
@@ -352,7 +342,7 @@ object JsonParsing {
     def jsonFalse = string("false").map(_ => JBool(false)).w
     def jsonNull = string("null").map(_ => JNull).w
 
-    val jsonRoot = scope("Invalid root element")(spaces *> (jsonArray | jsonObject)) <* eof
+    val jsonRoot = scope("Root")(spaces *> (jsonArray | jsonObject)) <* eof
 
     jsonRoot
   }
@@ -365,7 +355,6 @@ object JsonParsing {
 object Examples {
   def example1[Parser[+_]](P: Parsers[Parser])= {
     import P._
-
     val spaces = " ".many
     val p1 = scope("magic spell") {
       "abra" ** spaces ** "cadabra"
@@ -376,6 +365,22 @@ object Examples {
     val p = p1 | p2
     run(p)("abra cAdabra")
   }
-
   val eg1 = example1(MyParsers)
+
+  def example2[Parser[+_]](P: Parsers[Parser])(input: String) = {
+    import P._
+    val spaces = " ".many
+    val p = ((("abra" <* spaces) ** "abra" <* spaces) ** "cadabra") | (("abra" <* spaces) ** "cadabra!")
+    run(p)(input)
+  }
+  val eg2 = example2(MyParsers) _
+
+  def example3[Parser[+_]](P: Parsers[Parser])(input: String) = {
+    import P._
+    val spaces = " ".many
+    val p = ((attempt(("abra" <* spaces) ** "abra") <* spaces) ** "cadabra") |
+            (("abra" <* spaces) ** "cadabra!")
+    run(p)(input)
+  }
+  val eg3 = example3(MyParsers) _
 }
