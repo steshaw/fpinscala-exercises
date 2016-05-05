@@ -124,17 +124,6 @@ trait Parsers[P[+_]] { self =>
 //        }
 //      }
   }
-
-  trait Usage {
-    // Exercise 9.6. -- that many 'a's.
-    val thatManyAs = {
-      val digit = """[0-9]""".r
-      digit.flatMap { digit =>
-        val n = digit.toInt
-        listOfN(n, char('a'))
-      }
-    }
-  }
 }
 
 case class Location(input: String, offset: Int) {
@@ -442,6 +431,15 @@ object Examples {
 
   val P: Parsers[MyParser] = MyParsers
   import P._
+
+  // Exercise 9.6. -- that many 'a's.
+  val thatManyAs = {
+    val digit = """[0-9]""".r
+    digit.flatMap { digit =>
+      val n = digit.toInt
+      listOfN(n, char('a'))
+    }
+  }
 
   val numA: Parser[Int] = char('a').many.map(_.size)
 
