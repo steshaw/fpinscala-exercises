@@ -139,7 +139,12 @@ trait Parsers[P[+_]] { self =>
 
 case class Location(input: String, offset: Int) {
   lazy val line = input.slice(0, offset + 1).count(_ == '\n') + 1
-  lazy val col = input.slice(0, offset + 1).reverse.indexOf('\n')
+  lazy val col = {
+    val i: Int = input.slice(0, offset + 1).reverse.indexOf('\n')
+    if (i < 0) offset + 1
+    else if (i == 0) 1
+    else i
+  }
 
   def toError(msg: String): ParseError =
     ParseError(List((this, msg)))
@@ -153,8 +158,8 @@ case class Location(input: String, offset: Int) {
 }
 
 case class ParseError(
-  stack: List[(Location, String)] = List(),
-  otherFailures: List[ParseError] = List(),
+  stack: List[(Location, String)] = Nil,
+  otherFailures: List[ParseError] = Nil,
   isCommitted: Boolean = false
 ) {
 
@@ -170,6 +175,22 @@ case class ParseError(
     copy(stack = (location, msg) :: stack)
 
   def uncommit = copy(isCommitted = false)
+
+  def print(): Unit = {
+    val (_, finalLocation) = stack.foldLeft((0, None: Option[Location])) {
+      case ((indent, finalLoc), (loc, msg)) =>
+        val indentation = " " * indent
+        val line = loc.line
+        val col = loc.col
+        println(s"$indentation$line:$col: $msg")
+        (indent + 2, Some(loc))
+      }
+
+    finalLocation.foreach { loc =>
+      println(loc.currentLine)
+      println(" " * (loc.col - 1) + "^")
+    }
+  }
 }
 
 case class State(entireInput: String, input: String, offset: Int = 0) {
@@ -354,7 +375,7 @@ object JsonParsing {
     def jsonFalse = string("false").map(_ => JBool(false)).w
     def jsonNull = string("null").map(_ => JNull).w
 
-    val jsonRoot = scope("Root")(spaces *> (jsonArray | jsonObject)) <* eof
+    val jsonRoot = (spaces *> scope("Root")(jsonArray | jsonObject)) <* eof
 
     jsonRoot
   }
