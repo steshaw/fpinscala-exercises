@@ -157,10 +157,15 @@ case class ParseError(
   otherFailures: List[ParseError] = List(),
   isCommitted: Boolean = false
 ) {
-  def label(errMsg: String): ParseError = {
-    val location = stack.head._1
-    copy(stack = List((location, errMsg)))
-  }
+
+  def label[A](s: String): ParseError = ParseError(deepestLoc.map((_,s)).toList) // XXX: Does not respect this.isCommitted
+  // XXX: Probably prefer
+//  def label2[A](s: String): ParseError = copy(deepestLoc.map((_, s)).toList)
+
+  def deepestLoc: Option[Location] = deepest map (_._1)
+
+  def deepest: Option[(Location,String)] = stack.lastOption
+
   def push(msg: String, location: Location): ParseError =
     copy(stack = (location, msg) :: stack)
 }
@@ -384,4 +389,11 @@ object Examples {
   val x = (input: String) => MyParsers.run(p)(input)
 
   val trailingComma = x("[1,]")
+
+  import MyParsers._
+
+  val magic = label("first")("abra") ** " ".many ** label("second")(scope("cadabra")("cada" ** "bra"))
+  val eg4 = run(magic)("abra")
+  val eg5 = run(magic)("abracadabra")
+  val eg6 = run(magic)("abracada_oops")
 }
