@@ -5,7 +5,8 @@ import scala.language.implicitConversions
 import scala.util.matching.Regex
 import scala.util.matching.Regex.Match
 
-trait Parsers[Parser[+_]] { self =>
+trait Parsers[P[+_]] { self =>
+  type Parser[A] = P[A]
 
   // Primitives
 
@@ -65,7 +66,6 @@ trait Parsers[Parser[+_]] { self =>
     if (n <= 0) succeed(Nil)
     else map2(p, listOfN(n - 1, p))((r, rs) => r :: rs)
 
-  val numA: Parser[Int] = char('a').many.map(_.size)
 
   // Implicits
 
@@ -180,13 +180,25 @@ object MyParsers extends Parsers[MyParser] {
 
   override def succeed[A](a: A): MyParser[A] = MyParser(state => Right(a, state))
 
-  override def string(s: String): MyParser[String] = MyParser { state =>
-    val r = if (state.input.startsWith(s))
-      Right((s, state.copy(input = state.input.substring(s.length), offset = state.offset + s.length)))
-    else
-      Left(Location(state.input, state.offset).toError(s"Error matching string '$s'"))
-    r
+  def matchesChars(input: String, expected: String, loc: Location): Either[ParseError, Unit] = {
+    if (expected.isEmpty) Right(())
+    else if (input.isEmpty) Left(loc.toError(s"Reached end of input, while expecting '${expected.charAt(0)}'"))
+    else if (input.charAt(0) == expected.charAt(0))
+      matchesChars(input.substring(1), expected.substring(1), loc.advanceBy(1))
+    else {
+      Left(loc.toError(s"Found character '${input.charAt(0)}' while expecting '${expected.charAt(0)}'"))
+    }
   }
+
+  override def string(s: String): MyParser[String] = scope(s"Matching string '$s'")(MyParser { state =>
+    matchesChars(state.input, s, state.location).right.map { _ =>
+      val state1 = state.copy(
+        input = state.input.substring(s.length),
+        offset = state.offset + s.length
+      )
+      (s, state1)
+    }
+  })
 
   override def regex(r: Regex): MyParser[String] = MyParser { state =>
     val maybeMatch: Option[Match] = r.findPrefixMatchOf(state.input)
@@ -289,7 +301,7 @@ object JsonParsing {
     s8
   }
 
-  def jsonParser[Parser[+_]](P: Parsers[Parser]): Parser[JSON] = {
+  def jsonParser[P[+_]](P: Parsers[P]): P[JSON] = {
     import P._
     import JSON._
 
@@ -390,7 +402,10 @@ object Examples {
 
   val trailingComma = x("[1,]")
 
-  import MyParsers._
+  val P: Parsers[MyParser] = MyParsers
+  import P._
+
+  val numA: Parser[Int] = char('a').many.map(_.size)
 
   val magic = label("first")("abra") ** " ".many ** label("second")(scope("cadabra")("cada" ** "bra"))
   val eg4 = run(magic)("abra")
