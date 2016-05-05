@@ -73,10 +73,10 @@ trait Parsers[Parser[+_]] { self =>
 
   implicit val regexToParser = regex _
 
-  implicit def operators[A](p: Parser[A]): ParserOps[A] = ParserOps[A](p)
-
   implicit def asStringParser[A](a: A)(implicit f: A => Parser[String]): ParserOps[String] =
     ParserOps(f(a))
+
+  implicit def operators[A](p: Parser[A]): ParserOps[A] = ParserOps[A](p)
 
   case class ParserOps[A](p1: Parser[A]) {
     def |[B >: A](p2: => Parser[B]) = or(p1, p2)
@@ -262,15 +262,10 @@ object JsonParsing {
   val jsonNumberRegex = """-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?""".r
 
   val jsonStringRegex =
-    """" ([^"\\]* | \\["\\bfnrt\/] | \\u[0-9a-fA-F]{4} )* """".filterNot(_.isSpaceChar).r
+    """ ([^"\\]* | \\["\\bfnrt\/] | \\u[0-9a-fA-F]{4} )* """.filterNot(_.isSpaceChar).r
 
-  val hackJsonString = (s: String) => {
-    // XXX: What horrible hacks has our jsonStringRegex caused us to consider?!?
-
-    // Remove double quotes.
-    val s1 = s.replaceFirst("^\"", "")
-    val s2 = s1.replaceFirst("\"$", "")
-
+  // XXX: What horrible hacks has our jsonStringRegex caused us to consider?!?
+  val hackJsonString = (s2: String) => {
     // NOTE: "\\x5C" is "\". This is so that we can match literal "\" as a regex.
 
     // Replace control escapes.
@@ -296,22 +291,17 @@ object JsonParsing {
     import P._
     import JSON._
 
-    // FIX: What's the definition of "spaces" in the spec?
-    val spaces = (char(' ') | char('\t') | char('\n')).many.slice
+    val spaces = regex("[ \\t\\n\\r]".r).many.slice
     val dquote = char('"')
-    val anyChar = """.""".r
 
-    def w[A](p1: Parser[A]): Parser[A] = p1 <* spaces
-    def ws[A](p: Parser[A]) = w(p) // XXX: Just alias for calling from MoreParserOps.
+    def ws[A](p: Parser[A]) = p <* spaces
 
     case class MoreParserOps[A](p1: Parser[A]) {
-      def w: Parser[A] = ws(p1)
+      def w: Parser[A] = ws(p1) // FIX: Why doesn't the following syntax work? "".w
     }
     implicit def moreOps[A](p: Parser[A]): MoreParserOps[A] = MoreParserOps[A](p)
 
-    //val jsonString = dquote ** jsonStringBody ** dquote map { case ((_, s), _) => JString(s) }
-
-    val jsonString = (jsonStringRegex map { s => JString(hackJsonString(s)) }).w
+    val jsonString = ((dquote *> jsonStringRegex map { s => JString(hackJsonString(s)) }) <* dquote).w
 
     val jsonNumber: Parser[JNumber] = jsonNumberRegex.map((s: String) => JNumber(s.toDouble)).w
 
@@ -319,27 +309,27 @@ object JsonParsing {
 
     def jsonValue = jsonString | jsonNumber | jsonObject | jsonArray | jsonTrue | jsonFalse | jsonNull
 
-    // TODO: Should empty field names be rejected? i.e. ""
-    def jsonField = (jsonString <* w(":")) ** jsonValue map { case (name, value) =>
+    // NOTE: Empty names are accepted. i.e. ""
+    def jsonField = (jsonString <* string(":").w) ** jsonValue map { case (name, value) =>
         JField(name.get, value)
     }
 
     def surround[A, B](lbrace: Parser[A], rbrace: Parser[A])(body: Parser[B]): Parser[B] =
       lbrace *> body <* rbrace
 
+    // FIX: Trailing comma is accepted. e.g. "[1,]"
     def sepBy[A, B](sep: Parser[A], body: Parser[B]): Parser[List[B]] = {
       lazy val rest = sep *> sepBy(sep, body)
 
       (body ** (rest ? Nil) map { case (b, bs) => b :: bs }) ? Nil
     }
 
-    def jsonObject: Parser[JObject] = scope("JSON Object")(surround(w("{"), w("}"))(sepBy(w(","), jsonField)) map { fields =>
-      // XXX: What happens to duplicate names in the map? Here, the last value "wins".
-      // XXX: Should we reject them. Spec is unclear.
+    def jsonObject: Parser[JObject] = scope("JSON Object")(surround(ws("{"), ws("}"))(sepBy(ws(","), jsonField)) map { fields =>
+      // NOTE: The spec says that the names should be unique. Here the last k/v pair "wins".
       JObject(fields.map(f => f.name -> f.value).toMap)
     }).w
 
-    def jsonArray: Parser[JArray] = scope("JSON Array")(surround(w("["), w("]"))(sepBy(w(","), jsonValue)) map { v =>
+    def jsonArray: Parser[JArray] = scope("JSON Array")(surround(ws("["), ws("]"))(sepBy(ws(","), jsonValue)) map { v =>
       JArray(v.toIndexedSeq)
     }).w
 
@@ -351,10 +341,6 @@ object JsonParsing {
 
     jsonRoot
   }
-
-  // For console testing.
-  val p = jsonParser(MyParsers)
-  val x = (input: String) => MyParsers.run(p)(input)
 }
 
 object Examples {
@@ -383,6 +369,7 @@ object Examples {
   def example3[Parser[+_]](P: Parsers[Parser])(input: String) = {
     import P._
     val spaces = " ".many
+    // FIX: The precedence of <* ** *> operators isn't helpful.
     val p = ((attempt(("abra" <* spaces) ** "abra") <* spaces) ** "cadabra") |
             (("abra" <* spaces) ** "cadabra!")
     run(p)(input)
@@ -391,8 +378,13 @@ object Examples {
 
   def spacesP[Parser[+_]](P: Parsers[Parser])(input: String) = {
     import P._
-    val spaces = (char(' ') | char('\t') | char('\n')).many.slice
+    val spaces = regex("[ \\t\\n\\r]".r).many.slice
     run(spaces)(input)
   }
   val spaces = spacesP(MyParsers) _
+
+  val p = JsonParsing.jsonParser(MyParsers)
+  val x = (input: String) => MyParsers.run(p)(input)
+
+  val trailingComma = x("[1,]")
 }
