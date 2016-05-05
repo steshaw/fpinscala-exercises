@@ -168,6 +168,8 @@ case class ParseError(
 
   def push(msg: String, location: Location): ParseError =
     copy(stack = (location, msg) :: stack)
+
+  def uncommit = copy(isCommitted = false)
 }
 
 case class State(entireInput: String, input: String, offset: Int = 0) {
@@ -235,9 +237,8 @@ object MyParsers extends Parsers[MyParser] {
     }
   }
 
-  override def attempt[A](p: MyParser[A]): MyParser[A] = MyParser { state =>
-    val r1 = p.f(state)
-    r1.left.map(_.copy(isCommitted = false))
+  override def attempt[A](p: MyParser[A]): MyParser[A] = MyParser {
+    p.f(_).left.map(_.uncommit)
   }
 
   override def or[A](p1: MyParser[A], p2: => MyParser[A]): MyParser[A] = MyParser { input =>
