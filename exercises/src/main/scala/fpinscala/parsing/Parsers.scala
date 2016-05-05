@@ -85,7 +85,7 @@ trait Parsers[P[+_]] { self =>
 
     def *>[B](p2: Parser[B]) = p1 ** p2 map { case (_, r) => r } // Ignore left result.
 
-    def <*[B](p2: Parser[B]) = p1 ** p2 map { case (r, _) => r } // Ignore right result.
+    def *<[B](p2: Parser[B]) = p1 ** p2 map { case (r, _) => r } // Ignore right result.
 
     def ?(default: A) = optional(p1, default)
 
@@ -329,7 +329,7 @@ object JsonParsing {
     val spaces = regex("[ \\t\\n\\r]".r).many.slice
     val dquote = char('"')
 
-    def ws[A](p: Parser[A]) = p <* spaces
+    def ws[A](p: Parser[A]) = p *< spaces
 
     case class MoreParserOps[A](p1: Parser[A]) {
       def w: Parser[A] = ws(p1)
@@ -339,7 +339,7 @@ object JsonParsing {
 
 
 
-    val jsonString = ((dquote *> jsonStringRegex map { s => JString(hackJsonString(s)) }) <* dquote).w
+    val jsonString = ((dquote *> jsonStringRegex map { s => JString(hackJsonString(s)) }) *< dquote).w
 
     val jsonNumber: Parser[JNumber] = jsonNumberRegex.map((s: String) => JNumber(s.toDouble)).w
 
@@ -348,12 +348,12 @@ object JsonParsing {
     def jsonValue = jsonString | jsonNumber | jsonObject | jsonArray | jsonTrue | jsonFalse | jsonNull
 
     // NOTE: Empty names are accepted. i.e. ""
-    def jsonField = (jsonString <* string(":").w) ** jsonValue map { case (name, value) =>
+    def jsonField = (jsonString *< string(":").w) ** jsonValue map { case (name, value) =>
         JField(name.get, value)
     }
 
     def surround[A, B](lbrace: Parser[A], rbrace: Parser[A])(body: Parser[B]): Parser[B] =
-      lbrace *> body <* rbrace
+      lbrace *> body *< rbrace
 
     def sepBy[A, B](sep: Parser[A], body: Parser[B]): Parser[List[B]] = {
       lazy val rest = sep *> sepBy(sep, body)
@@ -374,7 +374,7 @@ object JsonParsing {
     def jsonFalse = string("false").map(_ => JBool(false)).w
     def jsonNull = string("null").map(_ => JNull).w
 
-    val jsonRoot = (spaces *> scope("Root")(jsonArray | jsonObject)) <* eos
+    val jsonRoot = (spaces *> scope("Root")(jsonArray | jsonObject)) *< eos
 
     jsonRoot
   }
@@ -398,7 +398,7 @@ object Examples {
   def example2[Parser[+_]](P: Parsers[Parser])(input: String) = {
     import P._
     val spaces = " ".many
-    val p = ((("abra" <* spaces) ** "abra" <* spaces) ** "cadabra") | (("abra" <* spaces) ** "cadabra!")
+    val p = "abra" *< spaces ** "abra" *< spaces ** "cadabra" | "abra" *< spaces ** "cadabra!"
     run(p)(input)
   }
   val eg2 = example2(MyParsers) _
@@ -406,9 +406,8 @@ object Examples {
   def example3[Parser[+_]](P: Parsers[Parser])(input: String) = {
     import P._
     val spaces = " ".many
-    // FIX: The precedence of <* ** *> operators isn't helpful.
-    val p = ((attempt(("abra" <* spaces) ** "abra") <* spaces) ** "cadabra") |
-            (("abra" <* spaces) ** "cadabra!")
+    val p = attempt("abra" *< spaces ** "abra" *< spaces) ** "cadabra" |
+            "abra" *< spaces ** "cadabra!"
     run(p)(input)
   }
   val eg3 = example3(MyParsers) _
