@@ -243,8 +243,10 @@ object MyParsers extends Parsers[MyParser] {
 
   override def or[A](p1: MyParser[A], p2: => MyParser[A]): MyParser[A] = MyParser { input =>
     val r = p1.f(input)
-    // FIX: use of Either.isLeft and Either.get
-    if (r.isLeft && !r.left.get.isCommitted) p2.f(input) else r
+    r match {
+      case Left(ParseError(_, _, false)) => p2.f(input)
+      case _ => r
+    }
   }
 
   override def eof: MyParser[Unit] = MyParser { state =>
