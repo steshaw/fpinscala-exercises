@@ -337,15 +337,15 @@ object JsonParsing {
     implicit def moreOps[A, B1](b: B1)(implicit f: B1 => Parser[A]): MoreParserOps[A] =
       MoreParserOps(b)
 
-
-
     val jsonString = ((dquote *> jsonStringRegex map { s => JString(hackJsonString(s)) }) *< dquote).w
 
     val jsonNumber: Parser[JNumber] = jsonNumberRegex.map((s: String) => JNumber(s.toDouble)).w
 
     case class JField(name: String, value: JSON)
 
-    def jsonValue = jsonString | jsonNumber | jsonObject | jsonArray | jsonTrue | jsonFalse | jsonNull
+    def jsonValue = label("Expecting JSON value")(
+      jsonString | jsonNumber | jsonObject | jsonArray | jsonTrue | jsonFalse | jsonNull
+    )
 
     // NOTE: Empty names are accepted. i.e. ""
     def jsonField = (jsonString *< string(":").w) ** jsonValue map { case (name, value) =>
