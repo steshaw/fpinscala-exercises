@@ -26,7 +26,7 @@ trait Parsers[P[+_]] { self =>
 
   def or[A](p1: Parser[A], p2: => Parser[A]): Parser[A]
 
-  def eof: Parser[Unit]
+  def eos: Parser[Unit]
 
   // Error utils
   def errorMessage(e: ParseError): String
@@ -255,15 +255,12 @@ object MyParsers extends Parsers[MyParser] {
 
   override def or[A](p1: MyParser[A], p2: => MyParser[A]): MyParser[A] = MyParser { input =>
     val r = p1.f(input)
-    r match {
-      case Left(ParseError(_, false)) => p2.f(input)
-      case _ => r
-    }
+    r.left.flatMap(parseError => if (parseError.isCommitted) r else p2.f(input))
   }
 
-  override def eof: MyParser[Unit] = MyParser { state =>
+  override def eos: MyParser[Unit] = MyParser { state =>
     if (state.input.isEmpty) Right((), state)
-    else Left(state.location.toError(s"Expected eof but got '${state.input}'"))
+    else Left(state.location.toError(s"Expected end of input but got '${state.input}'"))
   }
 
   override def many1[A](p: Parser[A]): Parser[List[A]] = MyParser { state =>
@@ -375,7 +372,7 @@ object JsonParsing {
     def jsonFalse = string("false").map(_ => JBool(false)).w
     def jsonNull = string("null").map(_ => JNull).w
 
-    val jsonRoot = (spaces *> scope("Root")(jsonArray | jsonObject)) <* eof
+    val jsonRoot = (spaces *> scope("Root")(jsonArray | jsonObject)) <* eos
 
     jsonRoot
   }
