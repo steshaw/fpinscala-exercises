@@ -148,13 +148,10 @@ case class Location(input: String, offset: Int) {
 
 case class ParseError(
   stack: List[(Location, String)] = Nil,
-  otherFailures: List[ParseError] = Nil,
   isCommitted: Boolean = false
 ) {
 
-  def label[A](s: String): ParseError = ParseError(deepestLoc.map((_,s)).toList) // XXX: Does not respect this.isCommitted
-  // XXX: Probably prefer
-//  def label2[A](s: String): ParseError = copy(deepestLoc.map((_, s)).toList)
+  def label[A](s: String): ParseError = copy(deepestLoc.map((_, s)).toList)
 
   def deepestLoc: Option[Location] = deepest map (_._1)
 
@@ -259,7 +256,7 @@ object MyParsers extends Parsers[MyParser] {
   override def or[A](p1: MyParser[A], p2: => MyParser[A]): MyParser[A] = MyParser { input =>
     val r = p1.f(input)
     r match {
-      case Left(ParseError(_, _, false)) => p2.f(input)
+      case Left(ParseError(_, false)) => p2.f(input)
       case _ => r
     }
   }
