@@ -205,7 +205,7 @@ object MyParsers extends Parsers[MyParser] {
   override def regex(r: Regex): MyParser[String] = MyParser { state =>
     val maybeMatch: Option[Match] = r.findPrefixMatchOf(state.input)
     if (maybeMatch.isEmpty)
-      Left(Location(state.input, state.offset).toError(s"Error regex '$r' did not match input '${state.input}'"))
+      Left(state.location.toError(s"Error regex '$r' did not match input '${state.input}'"))
     else {
       val matched = maybeMatch.get.matched
       val remaining: String = maybeMatch.get.after.toString
@@ -251,7 +251,7 @@ object MyParsers extends Parsers[MyParser] {
 
   override def eof: MyParser[Unit] = MyParser { state =>
     if (state.input.isEmpty) Right((), state)
-    else Left(Location(state.input, state.offset).toError(s"Expected eof but got '${state.input}'"))
+    else Left(state.location.toError(s"Expected eof but got '${state.input}'"))
   }
 
   // Error utils
