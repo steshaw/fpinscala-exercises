@@ -332,9 +332,12 @@ object JsonParsing {
     def ws[A](p: Parser[A]) = p <* spaces
 
     case class MoreParserOps[A](p1: Parser[A]) {
-      def w: Parser[A] = ws(p1) // FIX: Why doesn't the following syntax work? "".w
+      def w: Parser[A] = ws(p1)
     }
-    implicit def moreOps[A](p: Parser[A]): MoreParserOps[A] = MoreParserOps[A](p)
+    implicit def moreOps[A, B1](b: B1)(implicit f: B1 => Parser[A]): MoreParserOps[A] =
+      MoreParserOps(b)
+
+
 
     val jsonString = ((dquote *> jsonStringRegex map { s => JString(hackJsonString(s)) }) <* dquote).w
 
@@ -358,12 +361,12 @@ object JsonParsing {
       body ** (rest ? Nil) map { case (b, bs) => b :: bs }
     }
 
-    def jsonObject: Parser[JObject] = scope("JSON Object")(surround(ws("{"), ws("}"))(sepBy(ws(","), jsonField) ? Nil) map { fields =>
+    def jsonObject: Parser[JObject] = scope("JSON Object")(surround("{".w, "}".w)(sepBy(",".w, jsonField) ? Nil) map { fields =>
       // NOTE: The spec says that the names should be unique. Here the last k/v pair "wins".
       JObject(fields.map(f => f.name -> f.value).toMap)
     }).w
 
-    def jsonArray: Parser[JArray] = scope("JSON Array")(surround(ws("["), ws("]"))(sepBy(ws(","), jsonValue) ? Nil) map { v =>
+    def jsonArray: Parser[JArray] = scope("JSON Array")(surround("[".w, "]".w)(sepBy(",".w, jsonValue) ? Nil) map { v =>
       JArray(v.toIndexedSeq)
     }).w
 
