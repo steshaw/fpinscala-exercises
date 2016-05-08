@@ -70,12 +70,17 @@ object Monoid {
   def foldMap[A, B](as: List[A], m: Monoid[B])(f: A => B): B =
     as.foldLeft(m.zero)((a1, a2) => m.op(a1, f(a2)))
 
-  def foldRight[A, B](as: List[A])(z: B)(f: (A, B) => B): B =
-    sys.error("todo")
+  def dual[A](m: Monoid[A]): Monoid[A] = new Monoid[A] {
+    override def op(a1: A, a2: A): A = m.op(a2, a1)
 
-  def foldLeft[A, B](as: List[A])(z: B)(f: (B, A) => B): B = {
-    foldMap[A, B => B](as, endoMonoid)(a => b => f(b, a))(z)
+    override def zero: A = m.zero
   }
+
+  def foldRight[A, B](as: List[A])(z: B)(f: (A, B) => B): B =
+    foldMap[A, B => B](as, dual(endoMonoid))(f.curried)(z)
+
+  def foldLeft[A, B](as: List[A])(z: B)(f: (B, A) => B): B =
+    foldMap[A, B => B](as, endoMonoid)(a => b => f(b, a))(z)
 
   def foldMapV[A, B](as: IndexedSeq[A], m: Monoid[B])(f: A => B): B =
     sys.error("todo")
@@ -87,13 +92,13 @@ object Monoid {
   case class Stub(chars: String) extends WC
   case class Part(lStub: String, words: Int, rStub: String) extends WC
 
-  def par[A](m: Monoid[A]): Monoid[Par[A]] = 
+  def par[A](m: Monoid[A]): Monoid[Par[A]] =
     sys.error("todo")
 
-  def parFoldMap[A,B](v: IndexedSeq[A], m: Monoid[B])(f: A => B): Par[B] = 
-    sys.error("todo") 
+  def parFoldMap[A,B](v: IndexedSeq[A], m: Monoid[B])(f: A => B): Par[B] =
+    sys.error("todo")
 
-  val wcMonoid: Monoid[WC] = sys.error("todo")
+  lazy val wcMonoid: Monoid[WC] = ???
 
   def count(s: String): Int = sys.error("todo")
 
