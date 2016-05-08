@@ -91,8 +91,21 @@ object Monoid {
     }
   }
 
-  def ordered(ints: IndexedSeq[Int]): Boolean =
-    sys.error("todo")
+  def ordered(ints: IndexedSeq[Int]): Boolean = {
+    // Option of the maximum value so far.
+    val m = new Monoid[Option[Int]] {
+      override def op(a1: Option[Int], a2: Option[Int]): Option[Int] = (a1, a2) match {
+        case (None, None) => None
+        case (Some(n), None) => None
+        case (None, Some(n)) => None
+        case (Some(n1), Some(n2)) => if (n1 < n2) Some(n2) else None
+      }
+
+      override def zero: Option[Int] = Some(0)
+    }
+    val r = foldMapV(ints, m)(a => Some(a))
+    r.fold(false)(_ => true)
+  }
 
   sealed trait WC
   case class Stub(chars: String) extends WC
