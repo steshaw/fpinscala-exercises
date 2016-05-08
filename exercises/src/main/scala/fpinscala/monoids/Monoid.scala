@@ -82,8 +82,14 @@ object Monoid {
   def foldLeft[A, B](as: List[A])(z: B)(f: (B, A) => B): B =
     foldMap[A, B => B](as, endoMonoid)(a => b => f(b, a))(z)
 
-  def foldMapV[A, B](as: IndexedSeq[A], m: Monoid[B])(f: A => B): B =
-    sys.error("todo")
+  def foldMapV[A, B](as: IndexedSeq[A], m: Monoid[B])(f: A => B): B = {
+    if (as.isEmpty) m.zero
+    else if (as.length == 1) f(as(0))
+    else {
+      val (ls, rs) = as.splitAt(as.length / 2)
+      m.op(foldMapV(ls, m)(f), foldMapV(rs, m)(f))
+    }
+  }
 
   def ordered(ints: IndexedSeq[Int]): Boolean =
     sys.error("todo")
@@ -98,7 +104,7 @@ object Monoid {
   def parFoldMap[A,B](v: IndexedSeq[A], m: Monoid[B])(f: A => B): Par[B] =
     sys.error("todo")
 
-  lazy val wcMonoid: Monoid[WC] = ???
+  lazy val wcMonoid: Monoid[WC] = sys.error("todo")
 
   def count(s: String): Int = sys.error("todo")
 
