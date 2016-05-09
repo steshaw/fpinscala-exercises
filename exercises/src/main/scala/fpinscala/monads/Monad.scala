@@ -1,11 +1,13 @@
 package fpinscala
 package monads
 
+import fpinscala.monoids.Monoid
 import parsing._
 import testing._
 import parallelism._
 import state._
 import parallelism.Par._
+
 import language.higherKinds
 
 
@@ -62,15 +64,40 @@ object Monad {
       ma flatMap f
   }
 
-  val parMonad: Monad[Par] = ???
+  val parMonad: Monad[Par] = new Monad[Par] {
+    override def unit[A](a: => A): Par[A] = Par.unit(a)
 
-  def parserMonad[P[+_]](p: Parsers[P]): Monad[P] = ???
+    override def flatMap[A, B](ma: Par[A])(f: (A) => Par[B]): Par[B] =
+      Par.flatMap(ma)(f)
+  }
 
-  val optionMonad: Monad[Option] = ???
+  def parserMonad[P[+_]](p: Parsers[P]): Monad[P] = new Monad[P] {
+    override def unit[A](a: => A): P[A] = p.succeed(a)
 
-  val streamMonad: Monad[Stream] = ???
+    override def flatMap[A, B](ma: P[A])(f: (A) => P[B]): P[B] =
+      p.flatMap(ma)(f)
+  }
 
-  val listMonad: Monad[List] = ???
+  val optionMonad: Monad[Option] = new Monad[Option] {
+    override def unit[A](a: => A): Option[A] = None
+
+    override def flatMap[A, B](ma: Option[A])(f: (A) => Option[B]): Option[B] =
+      ma.flatMap(f)
+  }
+
+  val streamMonad: Monad[Stream] = new Monad[Stream] {
+    override def unit[A](a: => A): Stream[A] = Stream.Empty
+
+    override def flatMap[A, B](ma: Stream[A])(f: (A) => Stream[B]): Stream[B] =
+      ma.flatMap(f)
+  }
+
+  val listMonad: Monad[List] = new Monad[List] {
+    override def unit[A](a: => A): List[A] = Nil
+
+    override def flatMap[A, B](ma: List[A])(f: (A) => List[B]): List[B] =
+      ma.flatMap(f)
+  }
 
   def stateMonad[S] = ???
 
