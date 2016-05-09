@@ -67,7 +67,7 @@ object Monoid {
   def concatenate[A](as: List[A], m: Monoid[A]): A =
     as.foldLeft(m.zero)(m.op)
 
-  def foldMap[A, B](as: List[A], m: Monoid[B])(f: A => B): B =
+  def foldMap[A, B](as: Seq[A], m: Monoid[B])(f: A => B): B =
     as.foldLeft(m.zero)((a1, a2) => m.op(a1, f(a2)))
 
   def dual[A](m: Monoid[A]): Monoid[A] = new Monoid[A] {
@@ -84,9 +84,9 @@ object Monoid {
   def foldLeft[A, B](as: List[A])(z: B)(f: (B, A) => B): B =
     foldMap[A, B => B](as, dual(endoMonoid))(flip(f).curried)(z)
 
-  def foldMapV[A, B](as: IndexedSeq[A], m: Monoid[B])(f: A => B): B = {
+  def foldMapV[A, B](as: IndexedSeq[A], m: Monoid[B], minLength: Int = 3)(f: A => B): B = {
     if (as.isEmpty) m.zero
-    else if (as.length == 1) f(as(0))
+    else if (as.length <= minLength) foldMap[A, B](as, m)(f)
     else {
       val (ls, rs) = as.splitAt(as.length / 2)
       m.op(foldMapV(ls, m)(f), foldMapV(rs, m)(f))
@@ -119,9 +119,30 @@ object Monoid {
   def parFoldMap[A,B](v: IndexedSeq[A], m: Monoid[B])(f: A => B): Par[B] =
     sys.error("todo")
 
-  lazy val wcMonoid: Monoid[WC] = sys.error("todo")
+  lazy val wcMonoid: Monoid[WC] = new Monoid[WC] {
+    override def op(a1: WC, a2: WC): WC = (a1, a2) match {
+      case (Stub(s1), Stub(s2)) => Stub(s1 + s2)
+      case (Stub(s), Part(ls, ws, rs)) => Part(s + ls, ws, rs)
+      case (Part(ls, ws, rs), Stub(s)) => Part(ls, ws, rs + s)
+      case (Part(ls1, ws1, rs1), Part(ls2, ws2, rs2)) =>
+        Part(ls1, ws1 + (if ((rs1 + ls2).trim.isEmpty) 0 else 1) + ws2, rs2)
+    }
 
-  def count(s: String): Int = sys.error("todo")
+    override def zero: WC = Stub("")
+  }
+
+  def count(s: String): Int = {
+    def w(stub: String): Int = if (stub.isEmpty) 0 else 1
+
+    def toWC(c: Char): WC =
+      if (c.isSpaceChar) Part("", 0, "")
+      else Stub(c.toString)
+
+    foldMapV(s, wcMonoid)(toWC(_)) match {
+      case Stub(s1) => w(s1)
+      case Part(ls, ws, rs) => w(ls) + ws + w(rs)
+    }
+  }
 
   def productMonoid[A,B](A: Monoid[A], B: Monoid[B]): Monoid[(A, B)] =
     sys.error("todo")
