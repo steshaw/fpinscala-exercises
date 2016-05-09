@@ -47,7 +47,7 @@ object Monoid {
   }
 
   def endoMonoid[A]: Monoid[A => A] = new Monoid[A => A] {
-    def op(a1: A => A, a2: A => A): A => A = a1 andThen a2
+    def op(a1: A => A, a2: A => A): A => A = a1 compose a2
     def zero: A => A = a => a
   }
 
@@ -77,10 +77,12 @@ object Monoid {
   }
 
   def foldRight[A, B](as: List[A])(z: B)(f: (A, B) => B): B =
-    foldMap[A, B => B](as, dual(endoMonoid))(f.curried)(z)
+    foldMap[A, B => B](as, endoMonoid)(f.curried)(z)
+
+  def flip[A, B, C](f: (A, B) => C): (B, A) => C = (b, a) => f(a, b)
 
   def foldLeft[A, B](as: List[A])(z: B)(f: (B, A) => B): B =
-    foldMap[A, B => B](as, endoMonoid)(a => b => f(b, a))(z)
+    foldMap[A, B => B](as, dual(endoMonoid))(flip(f).curried)(z)
 
   def foldMapV[A, B](as: IndexedSeq[A], m: Monoid[B])(f: A => B): B = {
     if (as.isEmpty) m.zero
