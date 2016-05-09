@@ -179,7 +179,7 @@ case class ParseError(
   }
 }
 
-case class State(
+case class ParseState(
   entireInput: String,
   input: String,
   offset: Int = 0,
@@ -189,7 +189,7 @@ case class State(
   def slice(newValue: Boolean) = copy(slicing = newValue)
 }
 
-case class MyParser[+A](f: State => Either[ParseError, (A, State)], errMsg: Option[String] = None)
+case class MyParser[+A](f: ParseState => Either[ParseError, (A, ParseState)], errMsg: Option[String] = None)
 
 object MyParsers extends Parsers[MyParser] {
 
@@ -279,7 +279,7 @@ object MyParsers extends Parsers[MyParser] {
 
   // Other
   override def run[A](p: MyParser[A])(input: String): Either[ParseError, A] =
-    p.f(State(input, input)).right.map { case (a, remaining) => a }
+    p.f(ParseState(input, input)).right.map { case (a, remaining) => a }
 }
 
 object JsonParsing {
