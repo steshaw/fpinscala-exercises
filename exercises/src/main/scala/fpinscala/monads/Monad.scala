@@ -1,7 +1,6 @@
 package fpinscala
 package monads
 
-import fpinscala.monoids.Monoid
 import parsing._
 import testing._
 import parallelism._
@@ -51,6 +50,21 @@ trait Monad[M[_]] extends Functor[M] {
   def replicateM[A](n: Int, ma: M[A]): M[List[A]] =
     if (n <= 0) unit(Nil)
     else map2(ma, replicateM(n - 1, ma))(_ :: _)
+
+  def filter[A](as: List[A])(f: A => Boolean): List[A] = as match {
+    case Nil => Nil
+    case a :: as => if (f(a)) a :: filter(as)(f) else filter(as)(f)
+  }
+
+  def filterM[A](as: List[A])(f: A => M[Boolean]): M[List[A]] = as match {
+    case Nil => unit(Nil)
+    case a :: as =>
+      val m: M[Boolean] = f(a)
+      flatMap(m) { (b: Boolean) =>
+        if (b) map(filterM(as)(f))(a :: _)
+        else filterM(as)(f)
+      }
+  }
 
   def compose[A,B,C](f: A => M[B], g: B => M[C]): A => M[C] = ???
 
