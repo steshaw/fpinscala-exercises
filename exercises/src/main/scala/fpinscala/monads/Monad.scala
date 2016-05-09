@@ -80,8 +80,6 @@ trait Monad[M[_]] extends Functor[M] {
     join(map(ma)(f))
 }
 
-case class Reader[R, A](run: R => A)
-
 object Monad {
   val genMonad = new Monad[Gen] {
     def unit[A](a: => A): Gen[A] = Gen.unit(a)
@@ -134,6 +132,11 @@ object Monad {
   def getState[S]: State[S, S] = State(s => (s, s))
   def setState[S](s: => S): State[S, Unit] = State(_ => ((), s))
 
+  case class Id[A](value: A) {
+    def map[B](f: A => B): Id[B] = Id(f(value))
+    def flatMap[B](f: A => Id[B]): Id[B] = f(value)
+  }
+
   val idMonad: Monad[Id] = new Monad[Id] {
     override def unit[A](a: => A): Id[A] = Id(a)
     override def flatMap[A, B](ma: Id[A])(f: (A) => Id[B]): Id[B] = ma.flatMap(f)
@@ -148,18 +151,34 @@ object Monad {
       _  <- setState(n + 1)
     } yield (n, a) :: xs).run(0)._1.reverse
 
-  def readerMonad[R] = ???
-}
+  case class Reader[R, A](run: R => A) {
+    def map[B](f: A => B): Reader[R, B] = Reader(r => {
+      f(run(r))
+    })
 
-case class Id[A](value: A) {
-  def map[B](f: A => B): Id[B] = Id(f(value))
-  def flatMap[B](f: A => Id[B]): Id[B] = f(value)
-}
-
-object Reader {
-  def readerMonad[R] = new Monad[({type f[x] = Reader[R,x]})#f] {
-    def unit[A](a: => A): Reader[R,A] = ???
-    override def flatMap[A,B](st: Reader[R,A])(f: A => Reader[R,B]): Reader[R,B] = ???
+    def flatMap[B](f: A => Reader[R, B]): Reader[R, B] = Reader(r => {
+      f(run(r)).run(r)
+    })
   }
+
+  def readerMonad[R] = new Monad[({type f[x] = Reader[R,x]})#f] {
+    def unit[A](a: => A): Reader[R,A] = Reader(Function.const(a))
+    override def flatMap[A,B](ra: Reader[R, A])(f: A => Reader[R, B]): Reader[R, B] =
+      Reader[R, B](r => f(ra.run(r)).run(r))
+  }
+
+  def read[R]: Reader[R, R] = Reader(identity)
+
+  def foo: Reader[Int, Int] = for {
+    b <- bar
+  } yield b
+
+  def bar: Reader[Int, Int] = read.flatMap { r =>
+    println(s"bar read $r")
+    Reader(Function.const(r))
+  }
+
+  val v: Int = foo.run(99)
+  println(s"v = $v")
 }
 
