@@ -168,7 +168,7 @@ object Monoid {
   }
 
   def bag[A](as: IndexedSeq[A]): Map[A, Int] =
-    sys.error("todo")
+    IndexedSeqFoldable.foldMap(as)(a => Map(a -> 1))(mapMergeMonoid(intAddition))
 }
 
 trait Foldable[F[_]] {
