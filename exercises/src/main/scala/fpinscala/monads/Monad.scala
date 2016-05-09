@@ -87,21 +87,21 @@ object Monad {
   }
 
   val optionMonad: Monad[Option] = new Monad[Option] {
-    override def unit[A](a: => A): Option[A] = None
+    override def unit[A](a: => A): Option[A] = Some(a)
 
     override def flatMap[A, B](ma: Option[A])(f: (A) => Option[B]): Option[B] =
       ma.flatMap(f)
   }
 
   val streamMonad: Monad[Stream] = new Monad[Stream] {
-    override def unit[A](a: => A): Stream[A] = Stream.Empty
+    override def unit[A](a: => A): Stream[A] = a #:: Stream.Empty
 
     override def flatMap[A, B](ma: Stream[A])(f: (A) => Stream[B]): Stream[B] =
       ma.flatMap(f)
   }
 
   val listMonad: Monad[List] = new Monad[List] {
-    override def unit[A](a: => A): List[A] = Nil
+    override def unit[A](a: => A): List[A] = a :: Nil
 
     override def flatMap[A, B](ma: List[A])(f: (A) => List[B]): List[B] =
       ma.flatMap(f)
@@ -114,7 +114,10 @@ object Monad {
       ma.flatMap(f)
   }
 
-  val idMonad: Monad[Id] = ???
+  val idMonad: Monad[Id] = new Monad[Id] {
+    override def unit[A](a: => A): Id[A] = ???
+    override def flatMap[A, B](ma: Id[A])(f: (A) => Id[B]): Id[B] = ???
+  }
 
   def readerMonad[R] = ???
 }
