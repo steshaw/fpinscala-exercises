@@ -204,12 +204,28 @@ case class Leaf[A](value: A) extends Tree[A]
 case class Branch[A](left: Tree[A], right: Tree[A]) extends Tree[A]
 
 object TreeFoldable extends Foldable[Tree] {
-  override def foldMap[A, B](as: Tree[A])(f: A => B)(mb: Monoid[B]): B =
-    sys.error("todo")
-  override def foldLeft[A, B](as: Tree[A])(z: B)(f: (B, A) => B) =
-    sys.error("todo")
-  override def foldRight[A, B](as: Tree[A])(z: B)(f: (A, B) => B) =
-    sys.error("todo")
+
+  override def foldMap[A, B](as: Tree[A])(f: A => B)(mb: Monoid[B]): B = as match {
+    case Leaf(value) => f(value)
+    case Branch(left, right) =>
+      val l = foldMap(left)(f)(mb)
+      val r = foldMap(right)(f)(mb)
+      mb.op(l, r)
+  }
+
+  override def foldLeft[A, B](as: Tree[A])(z: B)(f: (B, A) => B): B = as match {
+    case Leaf(value) => f(z, value)
+    case Branch(left, right) =>
+      val l = foldLeft(left)(z)(f)
+      foldLeft(right)(l)(f)
+  }
+
+  override def foldRight[A, B](as: Tree[A])(z: B)(f: (A, B) => B): B = as match {
+    case Leaf(value) => f(value, z)
+    case Branch(left, right) =>
+      val r = foldRight(right)(z)(f)
+      foldRight(left)(r)(f)
+  }
 }
 
 object OptionFoldable extends Foldable[Option] {
