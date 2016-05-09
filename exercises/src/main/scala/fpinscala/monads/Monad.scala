@@ -48,7 +48,9 @@ trait Monad[M[_]] extends Functor[M] {
     case a :: as => map2(f(a), traverse(as)(f))(_ :: _)
   }
 
-  def replicateM[A](n: Int, ma: M[A]): M[List[A]] = ???
+  def replicateM[A](n: Int, ma: M[A]): M[List[A]] =
+    if (n <= 0) unit(Nil)
+    else map2(ma, replicateM(n - 1, ma))(_ :: _)
 
   def compose[A,B,C](f: A => M[B], g: B => M[C]): A => M[C] = ???
 
