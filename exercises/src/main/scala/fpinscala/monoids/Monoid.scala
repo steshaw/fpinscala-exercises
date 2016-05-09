@@ -135,7 +135,7 @@ object Monoid {
     def w(stub: String): Int = if (stub.isEmpty) 0 else 1
 
     def toWC(c: Char): WC =
-      if (c.isSpaceChar) Part("", 0, "")
+      if (c.isWhitespace) Part("", 0, "")
       else Stub(c.toString)
 
     foldMapV(s, wcMonoid)(toWC(_)) match {
