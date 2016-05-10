@@ -9,7 +9,7 @@ import monoids._
 import language.higherKinds
 import language.implicitConversions
 
-trait Applicative[F[_]] extends Functor[F] {
+trait Applicative[F[_]] extends Functor[F] { self =>
   def unit[A](a: => A): F[A]
 
   def apply[A,B](fab: F[A => B])(fa: F[A]): F[B] =
@@ -44,7 +44,18 @@ trait Applicative[F[_]] extends Functor[F] {
   def product[A,B](fa: F[A], fb: F[B]): F[(A, B)] =
     map2(fa, fb)((a, b) => (a, b))
 
-  def product[G[_]](G: Applicative[G]): Applicative[({type f[x] = (F[x], G[x])})#f] = ???
+  def product[G[_]](G: Applicative[G]): Applicative[({type f[x] = (F[x], G[x])})#f] = {
+    val F = self
+    new Applicative[({type f[x] = (F[x], G[x])})#f] {
+      override def unit[A](a: => A): (F[A], G[A]) = (F.unit(a), G.unit(a))
+
+      override def map2[A, B, C](fa: (F[A], G[A]), fb: (F[B], G[B]))(f: (A, B) => C): (F[C], G[C]) = {
+        val fv = F.map2(fa._1, fb._1)(f)
+        val gv = G.map2(fa._2, fb._2)(f)
+        (fv, gv)
+      }
+    }
+  }
 
   def compose[G[_]](G: Applicative[G]): Applicative[({type f[x] = F[G[x]]})#f] = ???
 
