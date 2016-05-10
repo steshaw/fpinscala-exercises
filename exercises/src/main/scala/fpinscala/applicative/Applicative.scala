@@ -171,7 +171,7 @@ object Applicative {
     }
 }
 
-trait Traverse[F[_]] extends Functor[F] with Foldable[F] {
+trait Traverse[F[_]] extends Functor[F] with Foldable[F] { F ⇒
 
   def traverse[G[_],A,B](fa: F[A])(f: A => G[B])(implicit G: Applicative[G]): G[F[B]] =
     sequence(map(fa)(f))
@@ -235,7 +235,12 @@ trait Traverse[F[_]] extends Functor[F] with Foldable[F] {
     traverse[λ[x => (G[x], H[x])], A, B](fa)(a ⇒ (f(a), g(a)))
   }
 
-  def compose[G[_]](implicit G: Traverse[G]): Traverse[λ[x => F[G[x]]]] = ???
+  def compose[G[_]](implicit G: Traverse[G]): Traverse[λ[x => F[G[x]]]] = new Traverse[λ[x => F[G[x]]]] {
+    override def traverse[M[_], A, B](fga: F[G[A]])(f: A ⇒ M[B])
+                                     (implicit GA: Applicative[M]): M[F[G[B]]] = {
+      F.traverse(fga)((ga: G[A]) ⇒ G.traverse(ga)(f))
+    }
+  }
 }
 
 object Traverse {
