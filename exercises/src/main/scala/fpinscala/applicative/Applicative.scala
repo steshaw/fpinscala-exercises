@@ -172,10 +172,12 @@ object Applicative {
 }
 
 trait Traverse[F[_]] extends Functor[F] with Foldable[F] {
-  def traverse[G[_]: Applicative, A, B](fa: F[A])(f: A => G[B]): G[F[B]] =
+
+  def traverse[G[_],A,B](fa: F[A])(f: A => G[B])(implicit G: Applicative[G]): G[F[B]] =
     sequence(map(fa)(f))
-  def sequence[G[_]: Applicative, A](fma: F[G[A]]): G[F[A]] =
-    traverse(fma)(ma => ma)
+
+  def sequence[G[_],A](fga: F[G[A]])(implicit G: Applicative[G]): G[F[A]] =
+    traverse(fga)(ga => ga)
 
   type Id[A] = A
   val idMonad = new Monad[Id] {
@@ -219,8 +221,19 @@ trait Traverse[F[_]] extends Functor[F] with Foldable[F] {
     tuple._2
   }
 
+  def fuse1[G[_],H[_],A,B](fa: F[A])(f: A => G[B], g: A => H[B])
+                          (implicit G: Applicative[G], H: Applicative[H]): (G[F[B]], H[F[B]]) = {
+    // XXX: Works but traverses twice.
+    val traverse1: G[F[B]] = traverse(fa)(f)
+    val traverse2: H[F[B]] = traverse(fa)(g)
+    (traverse1, traverse2)
+  }
+
   def fuse[G[_],H[_],A,B](fa: F[A])(f: A => G[B], g: A => H[B])
-                         (implicit G: Applicative[G], H: Applicative[H]): (G[F[B]], H[F[B]]) = ???
+                         (implicit G: Applicative[G], H: Applicative[H]): (G[F[B]], H[F[B]]) = {
+    implicit val applicative: Applicative[λ[x => (G[x], H[x])]] = G.product(H)
+    traverse[λ[x => (G[x], H[x])], A, B](fa)(a ⇒ (f(a), g(a)))
+  }
 
   def compose[G[_]](implicit G: Traverse[G]): Traverse[λ[x => F[G[x]]]] = ???
 }
