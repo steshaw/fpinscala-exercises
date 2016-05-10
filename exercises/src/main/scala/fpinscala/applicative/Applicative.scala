@@ -29,7 +29,6 @@ trait Applicative[F[_]] extends Functor[F] {
   ): F[E] =
     apply(apply(apply(map(fa)(f.curried))(fb))(fc))(fd)
 
-
   def sequence[A](fas: List[F[A]]): F[List[A]] = traverse(fas)(identity)
 
   def traverse[A,B](as: List[A])(f: A => F[B]): F[List[B]] =
@@ -66,7 +65,12 @@ trait Monad[F[_]] extends Applicative[F] {
 }
 
 object Monad {
-  def eitherMonad[E]: Monad[({type f[x] = Either[E, x]})#f] = ???
+  def eitherMonad[E]: Monad[({type f[x] = Either[E, x]})#f] = new Monad[({type f[x] = scala.Either[E, x]})#f] {
+    override def flatMap[A, B](ma: Either[E, A])(f: A => Either[E, B]): Either[E, B] =
+      ma.fold(Left(_), f)
+
+    override def unit[A](a: => A): Either[E, A] = Right(a)
+  }
 
   def stateMonad[S] = new Monad[({type f[x] = State[S, x]})#f] {
     def unit[A](a: => A): State[S, A] = State(s => (a, s))
