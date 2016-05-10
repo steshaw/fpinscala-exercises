@@ -85,7 +85,7 @@ object Monad {
 
 sealed trait Validation[+E, +A]
 
-case class Failure[E](head: E, tail: Vector[E])
+case class Failure[E](head: E, tail: Vector[E] = Vector())
   extends Validation[E, Nothing]
 
 case class Success[A](a: A) extends Validation[Nothing, A]
@@ -183,4 +183,36 @@ object StateUtil {
 
   def set[S](s: S): State[S, Unit] =
     State(_ => ((), s))
+}
+
+object ApplicativeExample {
+  import java.util.Date
+
+  case class WebForm(name: String, birthDate: Date, phoneNumber: String)
+
+  def validName(name: String): Validation[String, String] =
+    if (name != "") Success(name)
+    else Failure("Name cannot be empty")
+
+  def validBirthdate(birthDate: String): Validation[String, Date] =
+    try {
+      Success(new java.text.SimpleDateFormat("yyyy-MM-dd").parse(birthDate))
+    } catch {
+      case _: java.text.ParseException => Failure("Birthdate must be in the form yyyy-MM-dd")
+    }
+
+  def validPhone(phoneNumber: String): Validation[String, String] =
+    if (phoneNumber.matches("[0-9]{10}"))
+      Success(phoneNumber)
+    else
+      Failure("Phone number must be 10 digits")
+
+  def validWebForm(name: String, birthDate: String,
+                   phone: String): Validation[String, WebForm] = {
+    Applicative.validationApplicative[String].map3(
+      validName(name),
+      validBirthdate(birthDate),
+      validPhone(phone))(
+      WebForm(_,_,_))
+  }
 }
