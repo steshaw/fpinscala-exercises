@@ -16,6 +16,7 @@ trait Applicative[F[_]] extends Functor[F] {
     map2(fab, fa)((f, a) => f(a))
 
   def map[A,B](fa: F[A])(f: A => B): F[B] = apply(unit(f))(fa)
+
   def map2[A,B,C](fa: F[A], fb: F[B])(f: (A, B) => C): F[C] =
     apply(map(fa)(f.curried))(fb)
 
@@ -102,7 +103,18 @@ object Applicative {
       a zip b map f.tupled
   }
 
-  def validationApplicative[E]: Applicative[({type f[x] = Validation[E,x]})#f] = ???
+  def validationApplicative[E]: Applicative[({type f[x] = Validation[E,x]})#f] = new Applicative[({type f[x] = _root_.fpinscala.applicative.Validation[E, x]})#f] {
+    override def unit[A](a: => A): Validation[E, A] = Success(a)
+
+    override def map2[A, B, C](fa: Validation[E, A], fb: Validation[E, B])(f: (A, B) => C): Validation[E, C] = {
+      (fa, fb) match {
+        case (Success(a), Success(b)) => Success(f(a, b))
+        case (f@Failure(_, _), Success(_)) => f
+        case (Success(_), f@Failure(_, _)) => f
+        case (Failure(h1, t1), Failure(h2, t2)) => Failure(h1, (t1 :+ h2) ++ t2)
+      }
+    }
+  }
 
   type Const[A, B] = A
 
