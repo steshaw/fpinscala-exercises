@@ -229,9 +229,9 @@ trait Traverse[F[_]] extends Functor[F] with Foldable[F] { F ⇒
     tuple._2
   }
 
-  def fuse1[G[_],H[_],A,B](fa: F[A])(f: A => G[B], g: A => H[B])
-                          (implicit G: Applicative[G], H: Applicative[H]): (G[F[B]], H[F[B]]) = {
-    // XXX: Works but traverses twice.
+  def fuseSlow[G[_],H[_],A,B](fa: F[A])(f: A => G[B], g: A => H[B])
+                             (implicit G: Applicative[G], H: Applicative[H]): (G[F[B]], H[F[B]]) = {
+    // NOTE: Works but traverses twice. See fuse.
     val traverse1: G[F[B]] = traverse(fa)(f)
     val traverse2: H[F[B]] = traverse(fa)(g)
     (traverse1, traverse2)
