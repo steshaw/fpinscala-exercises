@@ -158,6 +158,17 @@ object Applicative {
       def unit[A](a: => A): M = M.zero
       override def apply[A,B](m1: M)(m2: M): M = M.op(m1, m2)
     }
+
+  implicit def monoidToApplicative[M](M: Monoid[M]): Applicative[({type f[x] = Const[M, x]})#f] =
+    new Applicative[({ type f[x] = Const[M, x] })#f] {
+      override def unit[A](a: => A): M = M.zero
+
+      override def map2[A, B, C](fa: Const[M, A], fb: Const[M, B])(f: (A, B) => C): Const[M, C] =
+        M.op(fa, fb)
+
+      override def apply[A, B](fab: Const[M, (A) => B])(fa: Const[M, A]): Const[M, B] =
+        M.op(fab, fa)
+    }
 }
 
 trait Traverse[F[_]] extends Functor[F] with Foldable[F] {
