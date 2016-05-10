@@ -101,6 +101,30 @@ trait Monad[F[_]] extends Applicative[F] { self =>
 }
 
 object Monad {
+  case class OptionT[M[_], A](value: M[Option[A]])(implicit M: Monad[M]) {
+    def flatMap[B](f: A => OptionT[M, B]): OptionT[M, B] =
+      OptionT(M.flatMap(value) {
+        case None ⇒ M.unit(None)
+        case Some(a) ⇒ f(a).value
+      })
+  }
+
+  val optionMonad: Monad[Option] = new Monad[Option] {
+    override def unit[A](a: => A): Option[A] = Some(a)
+
+    override def flatMap[A, B](ma: Option[A])(f: (A) => Option[B]): Option[B] =
+      ma.flatMap(f)
+  }
+
+  type Id[A] = A
+  val idMonad = new Monad[Id] {
+    def unit[A](a: => A) = a
+    override def flatMap[A, B](a: A)(f: A => B): B = f(a)
+  }
+
+  // XXX: complete.
+//  def optionMonad2[A]: Monad[Option] = OptionT[Id, A]
+
   def eitherMonad[E]: Monad[Either[E, ?]] = new Monad[Either[E, ?]] {
     override def flatMap[A, B](ma: Either[E, A])(f: A => Either[E, B]): Either[E, B] =
       ma.fold(Left(_), f)
