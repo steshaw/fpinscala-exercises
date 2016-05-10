@@ -5,7 +5,11 @@ object FPInScalaBuild extends Build {
   val opts = Project.defaultSettings ++ Seq(
     scalaVersion := "2.11.8",
     scalacOptions := Seq("-unchecked", "-feature", "-deprecation"),
-    resolvers += "Typesafe Repository" at "http://repo.typesafe.com/typesafe/releases/"
+    resolvers ++= Seq(
+      Resolver.typesafeRepo("releases"),
+      Resolver.sonatypeRepo("releases")
+    ),
+    addCompilerPlugin("org.spire-math" % "kind-projector" % "0.7.1" cross CrossVersion.binary)
   )
 
   lazy val root =
