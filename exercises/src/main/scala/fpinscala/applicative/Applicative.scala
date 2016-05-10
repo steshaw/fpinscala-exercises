@@ -214,7 +214,10 @@ trait Traverse[F[_]] extends Functor[F] with Foldable[F] {
     tuple._1
   }
 
-  override def foldLeft[A,B](fa: F[A])(z: B)(f: (B, A) => B): B = ???
+  override def foldLeft[A,B](fa: F[A])(z: B)(f: (B, A) => B): B = {
+    val tuple: (F[Unit], B) = mapAccum(fa, z)((a, s) ⇒ ((), f(s, a)))
+    tuple._2
+  }
 
   def fuse[G[_],H[_],A,B](fa: F[A])(f: A => G[B], g: A => H[B])
                          (implicit G: Applicative[G], H: Applicative[H]): (G[F[B]], H[F[B]]) = ???
