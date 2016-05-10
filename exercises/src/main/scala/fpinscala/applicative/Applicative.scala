@@ -114,8 +114,16 @@ object Monad {
       st flatMap f
   }
 
-  def composeM[F[_],N[_]](implicit F: Monad[F], N: Monad[N], T: Traverse[N]):
-    Monad[λ[x => F[N[x]]]] = ???
+  def composeM[F[_],N[_]](implicit F: Monad[F], N: Monad[N], T: Traverse[N]): Monad[λ[x => F[N[x]]]] =
+    new Monad[λ[x => F[N[x]]]] {
+      override def unit[A](a: ⇒ A): F[N[A]] = F.unit(N.unit(a))
+
+      override def join[A](fnfna: F[N[F[N[A]]]]): F[N[A]] = {
+        val map1: F[N[N[A]]] = F.flatMap(fnfna)(nfna ⇒ T.sequence(nfna))
+        val fna: F[N[A]] = F.map(map1)(nna ⇒ N.join(nna))
+        fna
+      }
+    }
 }
 
 sealed trait Validation[+E, +A]
