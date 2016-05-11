@@ -3,6 +3,7 @@ package fpinscala.iomonad
 import language.postfixOps
 import language.higherKinds
 import scala.io.StdIn.readLine
+import scala.annotation.tailrec
 
 object IO0 {
                             /*
@@ -197,7 +198,8 @@ object IO2a {
   // tail-recursive function, the one tricky case is left-nested
   // flatMaps, as in `((a flatMap f) flatMap g)`, which we
   // reassociate to the right as `a flatMap (ar => f(a) flatMap g)`
-  @annotation.tailrec def run[A](io: IO[A]): A = io match {
+  @tailrec
+  def run[A](io: IO[A]): A = io match {
     case Return(a) => a
     case Suspend(r) => r()
     case FlatMap(x, f) => x match {
@@ -273,7 +275,7 @@ object IO2b {
       Suspend(() => ()).flatMap { _ => a }
   }
 
-  @annotation.tailrec def run[A](t: TailRec[A]): A = t match {
+  @tailrec def run[A](t: TailRec[A]): A = t match {
     case Return(a) => a
     case Suspend(r) => r()
     case FlatMap(x, f) => x match {
@@ -333,7 +335,8 @@ object IO2c {
   }
 
   // return either a `Suspend`, a `Return`, or a right-associated `FlatMap`
-  @annotation.tailrec def step[A](async: Async[A]): Async[A] = async match {
+  @tailrec
+  def step[A](async: Async[A]): Async[A] = async match {
     case FlatMap(FlatMap(x, f), g) => step(x flatMap (a => f(a) flatMap g))
     case FlatMap(Return(x), f) => step(f(x))
     case _ => async
@@ -380,7 +383,7 @@ object IO3 {
   }
 
   // Exercise 2: Implement a specialized `Function0` interpreter.
-  @annotation.tailrec
+  @tailrec
   def runTrampoline[A](fa: Free[Function0, A]): A = {
     fa match {
       case Return(a) ⇒ a
@@ -393,12 +396,23 @@ object IO3 {
     }
   }
 
-  // Exercise 3: Implement a `Free` interpreter which works for any `Monad`
-  def run[F[_],A](a: Free[F,A])(implicit F: Monad[F]): F[A] = ???
-
   // return either a `Suspend`, a `Return`, or a right-associated `FlatMap`
-  // @annotation.tailrec
-  def step[F[_],A](a: Free[F,A]): Free[F,A] = ???
+  @tailrec
+  def step[F[_],A](ffa: Free[F,A]): Free[F,A] = ffa match {
+    case FlatMap(FlatMap(x, f), g) => step(x flatMap (a => f(a) flatMap g))
+    case FlatMap(Return(x), f) => step(f(x))
+    case _ => ffa
+  }
+
+  // Exercise 3: Implement a `Free` interpreter which works for any `Monad`
+  def run[F[_],A](ffa: Free[F,A])(implicit F: Monad[F]): F[A] = step(ffa) match {
+    case Return(a) => F.unit(a)
+    case Suspend(r) => r
+    case FlatMap(x, f) => x match {
+      case Suspend(r) => F.flatMap(r)(a => run(f(ffa)))
+      case _ => sys.error("Impossible, since `step` eliminates these cases")
+    }
+  }
 
   /*
   The type constructor `F` lets us control the set of external requests our
