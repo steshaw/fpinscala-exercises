@@ -372,7 +372,12 @@ object IO3 {
                                f: A => Free[F, B]) extends Free[F, B]
 
   // Exercise 1: Implement the free monad
-  def freeMonad[F[_]]: Monad[({type f[a] = Free[F,a]})#f] = ???
+  def freeMonad[F[_]]: Monad[IO3.Free[F, ?]] = new Monad[IO3.Free[F, ?]] {
+    override def unit[A](a: ⇒ A): Free[F, A] = Return(a)
+
+    override def flatMap[A, B](a: Free[F, A])(f: (A) ⇒ Free[F, B]): Free[F, B] =
+      a flatMap f
+  }
 
   // Exercise 2: Implement a specialized `Function0` interpreter.
   // @annotation.tailrec
