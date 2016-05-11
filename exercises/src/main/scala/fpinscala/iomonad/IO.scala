@@ -368,7 +368,7 @@ object IO3 {
   }
   case class Return[F[_],A](a: A) extends Free[F, A]
   case class Suspend[F[_],A](s: F[A]) extends Free[F, A]
-  case class FlatMap[F[_],A,B](s: Free[F, A],
+  case class FlatMap[F[_],A,B](fa: Free[F, A],
                                f: A => Free[F, B]) extends Free[F, B]
 
   // Exercise 1: Implement the free monad
@@ -380,8 +380,18 @@ object IO3 {
   }
 
   // Exercise 2: Implement a specialized `Function0` interpreter.
-  // @annotation.tailrec
-  def runTrampoline[A](a: Free[Function0,A]): A = ???
+  @annotation.tailrec
+  def runTrampoline[A](fa: Free[Function0, A]): A = {
+    fa match {
+      case Return(a) ⇒ a
+      case Suspend(s) ⇒ s()
+      case FlatMap(x, f) => x match {
+        case Return(a) => runTrampoline(f(a))
+        case Suspend(r) => runTrampoline(f(r()))
+        case FlatMap(y, g) => runTrampoline(y flatMap (a => g(a) flatMap f))
+      }
+    }
+  }
 
   // Exercise 3: Implement a `Free` interpreter which works for any `Monad`
   def run[F[_],A](a: Free[F,A])(implicit F: Monad[F]): F[A] = ???
