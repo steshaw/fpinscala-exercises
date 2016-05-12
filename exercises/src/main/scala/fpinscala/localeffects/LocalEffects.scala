@@ -49,7 +49,8 @@ sealed trait ST[S,A] { self =>
 
 object ST {
   def apply[S,A](a: => A) = {
-    lazy val memo = a
+    // XXX put back to lazy val
+    /*lazy*/ val memo = a
     new ST[S,A] {
       def run(s: S) = (memo, s)
     }
@@ -127,11 +128,37 @@ object STArray {
 }
 
 object Immutable {
-  def noop[S] = ST[S,Unit](())
+  def noop[S] = ST[S, Unit](())
 
-  def partition[S](a: STArray[S,Int], l: Int, r: Int, pivot: Int): ST[S,Int] = ???
+  def partition[S](a: STArray[S, Int], l: Int, r: Int, pivot: Int): ST[S, Int] = for {
+    pivotVal ← a.read(pivot)
+    _ ← a.swap(pivot, r)
+    j ← STRef(l)
+    _ ← (l until r).foldLeft(noop[S]) { (s, i) ⇒
+      for {
+        _ ← s
+        ai ← a.read(i)
+        _ ← if (ai < pivotVal)
+              for {
+                jj ← j.read
+                _ ← a.swap(i, jj)
+                _ ← j.write(jj + 1)
+              } yield ()
+            else noop[S]
+      } yield ()
+    }
+    jj ← j.read
+    _ ← a.swap(jj, r)
+  } yield jj
 
-  def qs[S](a: STArray[S,Int], l: Int, r: Int): ST[S, Unit] = ???
+  def qs[S](a: STArray[S, Int], l: Int, r: Int): ST[S, Unit] =
+    if (l < r)
+      for {
+        pi ← partition(a, l, r, l + (r - l) / 2)
+        _ ← qs(a, l, pi - 1)
+        _ ← qs(a, pi + 1, r)
+      } yield ()
+    else noop
 
   def quicksort(xs: List[Int]): List[Int] =
     if (xs.isEmpty) xs else ST.runST(new RunnableST[List[Int]] {
@@ -143,6 +170,3 @@ object Immutable {
       } yield sorted
   })
 }
-
-import scala.collection.mutable.HashMap
-
