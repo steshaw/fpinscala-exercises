@@ -49,8 +49,7 @@ sealed trait ST[S,A] { self =>
 
 object ST {
   def apply[S,A](a: => A) = {
-    // XXX put back to lazy val
-    /*lazy*/ val memo = a
+    lazy val memo = a
     new ST[S,A] {
       def run(s: S) = (memo, s)
     }
