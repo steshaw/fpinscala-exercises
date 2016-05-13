@@ -12,6 +12,11 @@ object Tree {
     case Branch(left, right) ⇒ 1 + size(left) + size(right)
   }
 
+  def maximum(t: Tree[Int]): Int = t match {
+    case Leaf(value) ⇒ value
+    case Branch(l, r) ⇒ maximum(l) max maximum(r)
+  }
+
 }
 
 object Trees {
@@ -31,6 +36,7 @@ object Trees {
 
   def test() = {
     println(s"size(t) = ${size(t)}")
+    println(s"maximum(t) = ${maximum(t)}")
   }
 
 }
