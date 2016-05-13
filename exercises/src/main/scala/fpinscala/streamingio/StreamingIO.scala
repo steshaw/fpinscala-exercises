@@ -205,10 +205,38 @@ object SimpleStreamTransducers {
     def filter(f: O => Boolean): Process[I,O] =
       this |> Process.filter(f)
 
+    def feed[A,B](oa: Option[A])(p: Process[A,B]): Process[A,B] =
+      p match {
+        case Halt() => p
+        case Emit(h,t) => Emit(h, feed(oa)(t))
+        case Await(recv) => recv(oa)
+      }
+
+    def zip[O2](p2: Process[I, O2]): Process[I, (O, O2)] = {
+      def feedOne[O](i: Option[I], p: Process[I, O]): Process[I, O] = p match {
+        case Halt() ⇒ Halt()
+        case Emit(o, tp) ⇒ Emit(o, feedOne(i, tp))
+        case Await(f) ⇒ f(i)
+      }
+      this match {
+        case Halt() ⇒ Halt()
+        case Emit(o1, tp1) ⇒ p2 match {
+          case Halt() ⇒ Halt()
+          case Emit(o2, tp2) ⇒ emit(Tuple2(o1, o2), tp1 zip tp2)
+          case Await(f2) ⇒ Await(f2 andThen this.zip)
+        }
+        case Await(f) ⇒ Await(i ⇒ {
+          val tp1 = f(i)
+          val tp2 = feedOne(i, p2)
+          tp1 zip tp2
+        })
+      }
+    }
+
     /*
      * Exercise 6: Implement `zipWithIndex`.
      */
-    def zipWithIndex: Process[I,(O,Int)] = ???
+    def zipWithIndex: Process[I, (O, Int)] = this zip index
 
     /* Add `p` to the fallback branch of this process */
     def orElse(p: Process[I,O]): Process[I,O] = this match {
@@ -320,11 +348,12 @@ object SimpleStreamTransducers {
     /*
      * Exercise 2: Implement `count`.
      */
-    def count[I]: Process[I, Int] = {
-      def countFrom(i: Int): Process[I, Int] =
-        await(_ ⇒ emit(i, countFrom(i + 1)))
-      countFrom(1)
-    }
+    def countFrom[I](i: Int): Process[I, Int] =
+      await(_ ⇒ emit(i, countFrom(i + 1)))
+
+    def count[I]: Process[I, Int] = countFrom(1)
+
+    def index[I]: Process[I, Int] = countFrom(0)
 
     /* For comparison, here is an explicit recursive implementation. */
     def count2[I]: Process[I,Int] = {
@@ -333,10 +362,8 @@ object SimpleStreamTransducers {
       go(0)
     }
 
-    // XXX: This is not zip.
-    def zip[A, B, C](p1: Process[A, B], p2: Process[A, C]): Process[A, (B, C)] = {
-      p1.flatMap(b ⇒ p2.flatMap(c ⇒ emit[A, (B, C)]((b, c)))).repeat
-    }
+    def zip[A, B, C](p1: Process[A, B], p2: Process[A, C]): Process[A, (B, C)] =
+      p1 zip p2
 
     /*
      * Exercise 3: Implement `mean`.
@@ -380,6 +407,8 @@ object SimpleStreamTransducers {
      * allow for the definition of `mean` in terms of `sum` and
      * `count`?
      */
+    def mean3: Process[Double, Double] =
+      (sum zip count).map { case (d, c) ⇒ d / c }
 
     def feed[A,B](oa: Option[A])(p: Process[A,B]): Process[A,B] =
       p match {
@@ -393,6 +422,8 @@ object SimpleStreamTransducers {
      *
      * See definition on `Process` above.
      */
+    def zipWithIndex[I, O](p: Process[I, O]): Process[I, (O, Int)] =
+      p.zipWithIndex
 
     /*
      * Exercise 8: Implement `exists`
