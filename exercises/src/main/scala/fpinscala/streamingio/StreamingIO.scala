@@ -138,7 +138,7 @@ object SimpleStreamTransducers {
       case Halt() ⇒ Halt()
       case Emit(o2, p) ⇒ Emit(o2, this |> p)
       case Await(f) ⇒ this match {
-        case Halt() ⇒ Halt() // XXX: Answerkey feeds None to f here. Works without it. Is it for finalisation of p2?
+        case Halt() ⇒ Halt() |> f(None) // Required for finalisation.
         case Emit(o, p) ⇒ p |> f(Some(o))
         case Await(g) ⇒ Await(i ⇒ g(i) |> p2)
       }
@@ -512,9 +512,52 @@ object SimpleStreamTransducers {
      * Exercise 9: Write a program that reads degrees fahrenheit as `Double` values from a file,
      * converts each temperature to celsius, and writes results to another file.
      */
-
     def toCelsius(fahrenheit: Double): Double =
       (5.0 / 9.0) * (fahrenheit - 32.0)
+
+    def withPrintWriter(file: java.io.File)(f: java.io.PrintWriter => Unit) {
+      val p = new java.io.PrintWriter(file)
+      try f(p) finally p.close()
+    }
+
+    def file(name: String) = new java.io.File(name)
+
+    def linesFrom(f: java.io.File): Process[Unit, String] =
+      await[Unit, String](_ ⇒ {
+        val iter = scala.io.Source.fromFile(f).getLines()
+        def step() = if (iter.hasNext) Some(iter.next) else None
+        def lines: Process[Unit, String] = step() match {
+          case None => halt
+          case Some(line) => emit(line, lines)
+        }
+        lines
+      })
+
+    def linesTo(file: java.io.File): Process[String, Unit] = {
+      lazy val pw = new java.io.PrintWriter(file)
+      await[String, Unit](line ⇒ {
+        emit[String, Unit](pw.println(line))
+      }).repeat ++ emit[String, Unit] {
+        println(s"closing the output file, $file")
+        pw.close()
+      }
+    }
+
+    def fahrenheitToCelciusProcess: Process[Unit, Unit] = {
+      linesFrom(file("fahrenheit.txt")) |>
+        filter((line: String) => !line.startsWith("#")) |>
+        filter(!_.trim.isEmpty) |>
+        lift(_.toDouble) |>
+        lift(toCelsius(_)) |>
+        lift(_.toString) |>
+        linesTo(file("celcius.txt"))
+    }
+
+    def fahrenheitToCelcius(): Unit = {
+      implicit val executor = java.util.concurrent.Executors.newSingleThreadExecutor
+      val result: List[Unit] = fahrenheitToCelciusProcess(Stream(())).toList
+      println(s"result = $result")
+    }
   }
 }
 
