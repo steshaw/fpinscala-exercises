@@ -226,8 +226,7 @@ object SimpleStreamTransducers {
 
     case class Halt[I,O]() extends Process[I,O]
 
-    def emit[I,O](head: O,
-                  tail: Process[I,O] = Halt[I,O]()): Process[I,O] =
+    def emit[I,O](head: O, tail: Process[I,O] = Halt[I,O]()): Process[I,O] =
       Emit(head, tail)
 
     // Process forms a monad, and we provide monad syntax for it
@@ -255,6 +254,8 @@ object SimpleStreamTransducers {
         case None => fallback
       }
 
+    def halt[I, O] = Halt[I, O]()
+
     /*
      * We can convert any function `f: I => O` to a `Process[I,O]`. We
      * simply `Await`, then `Emit` the value received, transformed by
@@ -263,7 +264,7 @@ object SimpleStreamTransducers {
     def liftOne[I,O](f: I => O): Process[I,O] =
       Await {
         case Some(i) => emit(f(i))
-        case None => Halt()
+        case None => halt
       }
 
     def lift[I,O](f: I => O): Process[I,O] =
@@ -274,31 +275,36 @@ object SimpleStreamTransducers {
      * uses `repeat`.
      */
     def filter[I](f: I => Boolean): Process[I,I] =
-      Await[I,I] {
-        case Some(i) if f(i) => emit(i)
-        case _ => Halt()
-      }.repeat
+      await[I,I](i ⇒ if (f(i)) emit(i) else halt).repeat
 
     /*
      * Here's a typical `Process` definition that requires tracking some
      * piece of state (in this case, the running total):
      */
-    def sum: Process[Double,Double] = {
+    def runningSum: Process[Double, Double] = {
       def go(acc: Double): Process[Double,Double] =
-        await(d => emit(d+acc, go(d+acc)))
+        await(d => emit(d + acc, go(d + acc)))
       go(0.0)
     }
 
     /*
      * Exercise 1: Implement `take`, `drop`, `takeWhile`, and `dropWhile`.
      */
-    def take[I](n: Int): Process[I,I] = ???
+    def take[I](n: Int): Process[I,I] =
+      if (n <= 0) halt
+      else await(i ⇒ emit(i, take(n - 1)))
 
-    def drop[I](n: Int): Process[I,I] = ???
+    def pump[I]: Process[I, I] = lift(identity)
 
-    def takeWhile[I](f: I => Boolean): Process[I,I] = ???
+    def drop[I](n: Int): Process[I,I] =
+      if (n <= 0) pump
+      else await(_ ⇒ drop(n - 1))
 
-    def dropWhile[I](f: I => Boolean): Process[I,I] = ???
+    def takeWhile[I](f: I => Boolean): Process[I,I] =
+      await(i ⇒ if (f(i)) emit(i, takeWhile(f)) else halt)
+
+    def dropWhile[I](f: I => Boolean): Process[I,I] =
+      await(i ⇒ if (f(i)) dropWhile(f) else emit(i, pump))
 
     /* The identity `Process`, just repeatedly echos its input. */
     def id[I]: Process[I,I] = lift(identity)
