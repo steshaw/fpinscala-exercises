@@ -445,6 +445,17 @@ object SimpleStreamTransducers {
     def terminated[I]: Process[I,Option[I]] =
       await((i: I) => emit(Some(i), terminated[I]), emit(None))
 
+    def countingLinesRead(i: Iterator[String]) = new Iterator[String] {
+      var countLines = 0
+      override def hasNext: Boolean = i.hasNext
+      override def next(): String = {
+        val line = i.next()
+        countLines += 1
+        line
+      }
+      def numLines = countLines
+    }
+
     def processFile[A,B](f: java.io.File,
                          p: Process[String, A],
                          z: B)(g: (B, A) => B): IO[B] = IO {
@@ -459,8 +470,51 @@ object SimpleStreamTransducers {
           case Emit(h, t) => go(ss, t, g(acc, h))
         }
       val s = io.Source.fromFile(f)
-      try go(s.getLines, p, z)
+      try {
+        val counter = countingLinesRead(s.getLines())
+        val b: B = go(counter, p, z)
+        println(s"num lines read = ${counter.numLines}")
+        b
+      }
       finally s.close
+    }
+
+    def processFileLines[A,B](
+      f: java.io.File, p: Process[String, A]
+    ): IO[Stream[A]] = IO {
+      val s = io.Source.fromFile(f)
+      try {
+        val counter = countingLinesRead(s.getLines())
+        val stream = p(counter.toStream)
+        println(s"num lines read = ${counter.numLines}")
+        stream
+      } finally s.close
+    }
+
+    def processFiles(numLines: Int) = {
+      import java.io.File
+
+      implicit val executor = java.util.concurrent.Executors.newSingleThreadExecutor
+
+      val originalProcess: Process[String, Boolean] =
+        count |> exists(_ > numLines)
+
+      def originalProcessor(f: File) = {
+        val io = processFile(f, originalProcess, false)(_ || _)
+        val v = unsafePerformIO(io)
+        println(s"originalProcessor result of ${f.getName} is $v")
+      }
+
+      def newProcessor(f: File) = {
+        val p = originalProcess |> filter(_ == true) |> take(1)
+        val io = processFileLines(f, p)
+        val v = unsafePerformIO(io).headOption.getOrElse(false)
+        println(s"new Processor result of ${f.getName} is $v")
+      }
+
+      val files = List(new File("README.md"), new File("big.txt"))
+      files foreach originalProcessor
+      files foreach newProcessor
     }
 
     /*
