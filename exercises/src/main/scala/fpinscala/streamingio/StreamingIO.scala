@@ -653,10 +653,10 @@ object GeneralizedStreamTransducers {
       val cycle = (this.map(o => Some(o): Option[O]) ++ emit(None)).repeat
       // cut off the cycle when we see two `None` values in a row, as this
       // implies `this` has produced no values during an iteration
-      val trimmed = cycle |> window2 |> (takeWhile {
+      val trimmed = cycle |> window2 |> takeWhile {
         case (Some(None), None) => false
         case _ => true
-      })
+      }
       trimmed.map(_._2).flatMap {
         case None => Halt(End)
         case Some(o) => emit(o)
