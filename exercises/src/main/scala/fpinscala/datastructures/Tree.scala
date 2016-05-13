@@ -22,6 +22,11 @@ object Tree {
     case Branch(l, r) ⇒ 1 + depth(l) max depth(r)
   }
 
+  def map[A, B](t: Tree[A])(f: A ⇒ B): Tree[B] = t match {
+    case Leaf(v) ⇒ Leaf(f(v))
+    case Branch(l, r) ⇒ Branch(map(l)(f), map(r)(f))
+  }
+
 }
 
 object Trees {
@@ -43,6 +48,7 @@ object Trees {
     println(s"size(t) = ${size(t)}")
     println(s"maximum(t) = ${maximum(t)}")
     println(s"depth(t) = ${depth(t)}")
+    println(s"map(t)(_ + 1) = ${map(t)(_ + 1)}")
   }
 
 }
