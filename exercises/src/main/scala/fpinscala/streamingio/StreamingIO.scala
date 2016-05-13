@@ -136,7 +136,18 @@ object SimpleStreamTransducers {
     /*
      * Exercise 5: Implement `|>`. Let the types guide your implementation.
      */
-    def |>[O2](p2: Process[O,O2]): Process[I,O2] = ???
+    def |>[O2](p2: Process[O, O2]): Process[I, O2] = p2 match {
+      case Halt() ⇒ Halt()
+      case Emit(o2, p) ⇒ Emit(o2, this |> p)
+      case Await(f) ⇒ this match {
+        case Halt() ⇒ Halt() // XXX: Answerkey feeds None to f here. Works without it. Is it for finalisation of p2?
+        case Emit(o, p) ⇒ p |> f(Some(o))
+        case Await(g) ⇒ Await(i ⇒ g(i) |> p2)
+      }
+    }
+
+    def count2[I]: Process[I, Int] =
+      lift[I, Double](_ ⇒ 1.0) |> sum |> lift(_.toInt)
 
     /*
      * Feed `in` to this `Process`. Uses a tail recursive loop as long
@@ -154,7 +165,6 @@ object SimpleStreamTransducers {
         }
       go(in, this)
     }
-
 
     /*
      * See `Process.lift` for a typical repeating `Process`
@@ -233,8 +243,8 @@ object SimpleStreamTransducers {
 
     import fpinscala.iomonad.Monad
 
-    def monad[I]: Monad[({ type f[x] = Process[I,x]})#f] =
-      new Monad[({ type f[x] = Process[I,x]})#f] {
+    def monad[I]: Monad[Process[I, ?]] =
+      new Monad[Process[I, ?]] {
         def unit[O](o: => O): Process[I,O] = emit(o)
         def flatMap[O,O2](p: Process[I,O])(f: O => Process[I,O2]): Process[I,O2] =
           p flatMap f
@@ -281,7 +291,7 @@ object SimpleStreamTransducers {
      * Here's a typical `Process` definition that requires tracking some
      * piece of state (in this case, the running total):
      */
-    def runningSum: Process[Double, Double] = {
+    def sum: Process[Double, Double] = {
       def go(acc: Double): Process[Double,Double] =
         await(d => emit(d + acc, go(d + acc)))
       go(0.0)
