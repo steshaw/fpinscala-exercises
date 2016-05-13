@@ -854,7 +854,7 @@ object GeneralizedStreamTransducers {
     def resource_[R,O](acquire: IO[R])(
                        use: R => Process[IO,O])(
                        release: R => IO[Unit]): Process[IO,O] =
-      resource(acquire)(use)(release andThen (eval_[IO,Unit,O]))
+      resource(acquire)(use)(release andThen eval_[IO, Unit, O])
 
     /*
      * Create a `Process[IO,O]` from the lines of a file, using
@@ -876,10 +876,20 @@ object GeneralizedStreamTransducers {
         { src => eval_ { IO(src.close) } }
 
     /* Exercise 11: Implement `eval`, `eval_`, and use these to implement `lines`. */
-    def eval[F[_],A](a: F[A]): Process[F,A] = ???
+    def eval[F[_],A](fa: F[A]): Process[F, A] = {
+      await(fa) {
+        case Left(throwable) ⇒ Halt(throwable)
+        case Right(a) ⇒ Emit(a, Halt(End))
+      }
+    }
 
     /* Evaluate the action purely for its effects. */
-    def eval_[F[_],A,B](a: F[A]): Process[F,B] = ???
+    def eval_[F[_],A,B](a: F[A]): Process[F,B] = {
+      await(a) {
+        case Left(throwable) ⇒ Halt[F, B](throwable)
+        case Right(_) ⇒ Halt(End)
+      }
+    }
 
     /* Helper function with better type inference. */
     def evalIO[A](a: IO[A]): Process[IO,A] =
@@ -1049,7 +1059,7 @@ object GeneralizedStreamTransducers {
 
     import fpinscala.iomonad.IO0.fahrenheitToCelsius
 
-    val converter: Process[IO,Unit] =
+    def converter: Process[IO,Unit] =
       lines("fahrenheit.txt").
       filter(line => !line.startsWith("#") && !line.trim.isEmpty).
       map(line => fahrenheitToCelsius(line.toDouble).toString).
