@@ -325,10 +325,24 @@ object SimpleStreamTransducers {
       go(0)
     }
 
+    // XXX: This is not zip.
+    def zip[A, B, C](p1: Process[A, B], p2: Process[A, C]): Process[A, (B, C)] = {
+      p1.flatMap(b ⇒ p2.flatMap(c ⇒ emit[A, (B, C)]((b, c)))).repeat
+    }
+
     /*
      * Exercise 3: Implement `mean`.
      */
-    def mean: Process[Double,Double] = ???
+    def mean: Process[Double, Double] = {
+      def go(sum: Double, n: Int): Process[Double, Double] = {
+        await[Double, Double](d ⇒ {
+          val sum_ = sum + d
+          val n_ = n + 1
+          emit(sum_ / n_, go(sum_, n_))
+        })
+      }
+      go(0, 0)
+    }
 
     def loop[S,I,O](z: S)(f: (I,S) => (O,S)): Process[I,O] =
       await((i: I) => f(i,z) match {
