@@ -117,16 +117,14 @@ object SimpleStreamTransducers {
      * `flatMap`. The definitions are analogous.
      */
 
-    def map[O2](f: O => O2): Process[I,O2] = this match {
-      case Halt() => Halt()
-      case Emit(h, t) => Emit(f(h), t map f)
-      case Await(recv) => Await(recv andThen (_ map f))
-    }
+    def map[O2](f: O => O2): Process[I,O2] = this |> lift(f)
+
     def ++(p: => Process[I,O]): Process[I,O] = this match {
       case Halt() => p
       case Emit(h, t) => Emit(h, t ++ p)
       case Await(recv) => Await(recv andThen (_ ++ p))
     }
+
     def flatMap[O2](f: O => Process[I,O2]): Process[I,O2] = this match {
       case Halt() => Halt()
       case Emit(h, t) => f(h) ++ t.flatMap(f)
