@@ -410,15 +410,6 @@ object SimpleStreamTransducers {
     def mean3: Process[Double, Double] =
       (sum zip count).map { case (d, c) ⇒ d / c }
 
-/*
-    def feed[A,B](oa: Option[A])(p: Process[A,B]): Process[A,B] =
-      p match {
-        case Halt() => p
-        case Emit(h,t) => Emit(h, feed(oa)(t))
-        case Await(recv) => recv(oa)
-      }
-*/
-
     /*
      * Exercise 6: Implement `zipWithIndex`.
      *
