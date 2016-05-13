@@ -307,16 +307,20 @@ object SimpleStreamTransducers {
       await(i ⇒ if (f(i)) dropWhile(f) else emit(i, pump))
 
     /* The identity `Process`, just repeatedly echos its input. */
-    def id[I]: Process[I,I] = lift(identity)
+    def id[I]: Process[I,I] = pump
 
     /*
      * Exercise 2: Implement `count`.
      */
-    def count[I]: Process[I,Int] = ???
+    def count[I]: Process[I, Int] = {
+      def countFrom(i: Int): Process[I, Int] =
+        await(_ ⇒ emit(i, countFrom(i + 1)))
+      countFrom(1)
+    }
 
     /* For comparison, here is an explicit recursive implementation. */
     def count2[I]: Process[I,Int] = {
-      def go(n: Int): Process[I,Int] =
+      def go(n: Int): Process[I, Int] =
         await((i: I) => emit(n+1, go(n+1)))
       go(0)
     }
