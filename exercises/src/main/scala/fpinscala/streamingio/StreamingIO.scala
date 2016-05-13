@@ -351,9 +351,21 @@ object SimpleStreamTransducers {
 
     /* Exercise 4: Implement `sum` and `count` in terms of `loop` */
 
-    def sum2: Process[Double,Double] = ???
+    def sum2: Process[Double, Double] =
+      loop(0.0)((i, s) ⇒ (i + s, i + s))
 
-    def count3[I]: Process[I,Int] = ???
+    // Count from 0 this time.
+    def count3[I]: Process[I, Int] =
+      loop(0)((i, s) ⇒ (s, s + 1))
+
+    def mean2: Process[Double, Double] =
+      loop[(Double, Int), Double, Double](Tuple2(0.0, 0)) {
+        case (d, (sum, count)) ⇒ {
+          val s = sum + d
+          val c = count + 1
+          Tuple2(s / c, Tuple2(s, c))
+        }
+      }
 
     /*
      * Exercise 7: Can you think of a generic combinator that would
