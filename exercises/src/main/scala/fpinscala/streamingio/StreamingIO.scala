@@ -410,12 +410,14 @@ object SimpleStreamTransducers {
     def mean3: Process[Double, Double] =
       (sum zip count).map { case (d, c) ⇒ d / c }
 
+/*
     def feed[A,B](oa: Option[A])(p: Process[A,B]): Process[A,B] =
       p match {
         case Halt() => p
         case Emit(h,t) => Emit(h, feed(oa)(t))
         case Await(recv) => recv(oa)
       }
+*/
 
     /*
      * Exercise 6: Implement `zipWithIndex`.
@@ -431,7 +433,8 @@ object SimpleStreamTransducers {
      * We choose to emit all intermediate values, and not halt.
      * See `existsResult` below for a trimmed version.
      */
-    def exists[I](f: I => Boolean): Process[I,Boolean] = ???
+    def exists[I](f: I => Boolean): Process[I, Boolean] =
+      lift(f) |> loop(false)((i, s) ⇒ (i || s, i || s))
 
     /* Awaits then emits a single value, then halts. */
     def echo[I]: Process[I,I] = await(i => emit(i))
