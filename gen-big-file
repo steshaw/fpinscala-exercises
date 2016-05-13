@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+
+set -eu
+
+(
+  i=0
+  while [[ $i -lt 40003 ]]; do
+    echo ahahaha
+    i=$(($i + 1))
+  done
+) >|big.txt
