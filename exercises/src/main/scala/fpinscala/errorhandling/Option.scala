@@ -62,5 +62,10 @@ object Option {
     case a :: as ⇒ a.flatMap(aa ⇒ sequence(as).map(as ⇒ aa :: as))
   }
 
-  def traverse[A, B](a: List[A])(f: A => Option[B]): Option[List[B]] = sys.error("todo")
+  def traverse[A, B](as: List[A])(f: A => Option[B]): Option[List[B]] = as match {
+    case Nil ⇒ Some(Nil)
+    case a :: as ⇒ f(a).flatMap(aa ⇒ traverse(as)(f).map(as ⇒ aa :: as))
+  }
+
+  def sequence2[A](as: List[Option[A]]): Option[List[A]] = traverse(as)(identity)
 }
