@@ -46,6 +46,11 @@ trait Stream[+A] { self ⇒
     }
   }
 
+  def takeWhileFromAnswers(f: A => Boolean): Stream[A] = this match {
+    case Cons(h,t) if f(h()) => cons(h(), t() takeWhile f)
+    case _ => empty
+  }
+
   def forAll(p: A => Boolean): Boolean = sys.error("todo")
 
   def headOption: Option[A] = sys.error("todo")
@@ -59,6 +64,7 @@ trait Stream[+A] { self ⇒
 }
 
 // XXX: re-evaluate representation to make it easier to be lazy?
+// XXX: It's just that `Cons` should be private.
 case object Empty extends Stream[Nothing]
 case class Cons[+A](h: () => A, t: () => Stream[A]) extends Stream[A]
 
