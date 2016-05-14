@@ -1,10 +1,15 @@
 package fpinscala.laziness
 
+import scala.{Stream ⇒ _}
 import Stream._
-trait Stream[+A] {
+
+import scala.annotation.tailrec
+
+
+trait Stream[+A] { self ⇒
 
   def foldRight[B](z: => B)(f: (A, => B) => B): B = // The arrow `=>` in front of the argument type `B` means that the function `f` takes its second argument by name and may choose not to evaluate it.
-    this match {
+    self match {
       case Cons(h,t) => f(h(), t().foldRight(z)(f)) // If `f` doesn't evaluate its second argument, the recursion never occurs.
       case _ => z
     }
@@ -13,13 +18,25 @@ trait Stream[+A] {
     foldRight(false)((a, b) => p(a) || b) // Here `b` is the unevaluated recursive step that folds the tail of the stream. If `p(a)` returns `true`, `b` will never be evaluated and the computation terminates early.
 
   @annotation.tailrec
-  final def find(f: A => Boolean): Option[A] = this match {
+  final def find(f: A => Boolean): Option[A] = self match {
     case Empty => None
     case Cons(h, t) => if (f(h())) Some(h()) else t().find(f)
   }
-  def take(n: Int): Stream[A] = sys.error("todo")
 
-  def drop(n: Int): Stream[A] = sys.error("todo")
+  def take(n: Int): Stream[A] =
+    if (n <= 0) empty
+    else self match {
+      case Empty ⇒ empty
+      case Cons(h, t) ⇒ cons(h(), t().take(n - 1)) // FIX: t is evaluated early here.
+    }
+
+  @tailrec
+  final def drop(n: Int): Stream[A] =
+    if (n <= 0) self
+    else self match {
+      case Empty ⇒ empty
+      case Cons(_, t) ⇒ t().drop(n - 1)
+    }
 
   def takeWhile(p: A => Boolean): Stream[A] = sys.error("todo")
 
@@ -35,6 +52,7 @@ trait Stream[+A] {
   def toList: List[A] = foldRight[List[A]](Nil)(_ :: _)
 }
 
+// XXX: re-evaluate representation to make it easier to be lazy?
 case object Empty extends Stream[Nothing]
 case class Cons[+A](h: () => A, t: () => Stream[A]) extends Stream[A]
 
@@ -48,7 +66,7 @@ object Stream {
   def empty[A]: Stream[A] = Empty
 
   def apply[A](as: A*): Stream[A] =
-    if (as.isEmpty) empty 
+    if (as.isEmpty) empty
     else cons(as.head, apply(as.tail: _*))
 
   val ones: Stream[Int] = Stream.cons(1, ones)
