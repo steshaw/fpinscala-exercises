@@ -78,6 +78,40 @@ trait Stream[+A] { self ⇒
   def startsWith[B](s: Stream[B]): Boolean = sys.error("todo")
 
   def toList: List[A] = foldRight[List[A]](Nil)(_ :: _)
+
+  // Exercise 5.13. map, take, takeWhile, zipWith in terms of unfold.
+  def mapViaUnfold[B](f: A ⇒ B): Stream[B] =
+    unfold[B, Stream[A]](self) {
+      case Empty ⇒ None
+      case Cons(a, as) ⇒ Some((f(a()), as())) // FIX: Evaluates `as` early!
+    }
+
+  def takeViaUnfold(n: Int): Stream[A] =
+    unfold(self) {
+      case Empty ⇒ None
+      case Cons(a, as) ⇒ if (n <= 0) None else Some((a(), as())) // FIX: evaluates `as`!
+    }
+
+  def takeWhileViaUnfold(p: A => Boolean): Stream[A] =
+    unfold(self) {
+      case Empty ⇒ None
+      case Cons(a, as) ⇒ if (p(a())) Some((a(), as())) else None // FIX: evaluates `as`!
+    }
+
+  def zipWithViaUnfold[B, C](o: Stream[B])(f: (A, B) ⇒ C): Stream[C] =
+    unfold((self, o)) {
+      case ((Cons(a, as), Cons(b, bs))) ⇒ Some((f(a(), b()), (as(), bs()))) // FIX: early evaluation of tails.
+      case _ ⇒ None
+    }
+
+  def zipAll[B](o: Stream[B]): Stream[(Option[A],Option[B])] = {
+    unfold[(Option[A], Option[B]), (Stream[A], Stream[B])]((self, o)) {
+      case (Cons(a, as), Cons(b, bs)) ⇒ Some(Some(a()) → Some(b()), as()  → bs())
+      case (Cons(a, as), Empty)       ⇒ Some(Some(a()) → None     , as()  → empty)
+      case (Empty,       Cons(b, bs)) ⇒ Some(None      → Some(b()), empty → bs())
+      case (Empty,       Empty)       ⇒ None
+    }
+  }
 }
 
 // XXX: re-evaluate representation to make it easier to be lazy?
@@ -122,4 +156,6 @@ object Stream {
   def constant2[A](a: A): Stream[A] = unfold[A, Unit](a)(_ ⇒ Some(a, ()))
 
   val ones2: Stream[Int] = unfold[Int, Unit](1)(_ ⇒ Some(1, ()))
+
+  def ns() = cons(1, {println("after 1"); cons(2, {println("after 2"); cons(3, empty)})})
 }
