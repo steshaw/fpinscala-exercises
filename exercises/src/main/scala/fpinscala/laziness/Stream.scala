@@ -123,6 +123,12 @@ trait Stream[+A] { self ⇒
     } append cons(empty, empty)
 
   def hasSubsequence[A](s: Stream[A]): Boolean = tails exists (_ startsWith s)
+
+  def scanRight[B](z: B)(f: (A, ⇒ B) ⇒ B): Stream[B] =
+    unfold(self) {
+      case Empty ⇒ None
+      case s@Cons(a, as) ⇒ Some(s.foldRight(z)(f) → as())
+    } append cons(z, empty)
 }
 
 // XXX: re-evaluate representation to make it easier to be lazy?
