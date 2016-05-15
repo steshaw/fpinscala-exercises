@@ -46,6 +46,11 @@ trait Stream[+A] { self ⇒
     }
   }
 
+  def takeWhile2(p: A => Boolean): Stream[A] =
+    self.foldRight(empty[A]) { (a, b) ⇒
+      if (p(a)) cons(a, b) else empty
+    }
+
   def takeWhileFromAnswers(f: A => Boolean): Stream[A] = this match {
     case Cons(h,t) if f(h()) => cons(h(), t() takeWhile f)
     case _ => empty
@@ -56,7 +61,7 @@ trait Stream[+A] { self ⇒
 
   def headOption: Option[A] = sys.error("todo")
 
-  // 5.7 map, filter, append, flatmap using foldRight. Part of the exercise is
+  // 5.7 map, filter, append, flatMap using foldRight. Part of the exercise is
   // writing your own function signatures.
 
   def startsWith[B](s: Stream[B]): Boolean = sys.error("todo")
