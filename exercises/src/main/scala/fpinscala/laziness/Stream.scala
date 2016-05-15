@@ -109,5 +109,17 @@ object Stream {
     go(0, 1)
   }
 
-  def unfold[A, S](z: S)(f: S => Option[(A, S)]): Stream[A] = sys.error("todo")
+  def unfold[A, S](z: S)(f: S => Option[(A, S)]): Stream[A] = {
+    f(z) match {
+      case None ⇒ empty
+      case Some((a, s)) ⇒ cons(a, unfold(s)(f))
+    }
+  }
+
+  def fibs2(): Stream[Int] =
+    unfold((0, 1)) { case (a, b) ⇒ Some((a, (b, a + b))) }
+
+  def constant2[A](a: A): Stream[A] = unfold[A, Unit](a)(_ ⇒ Some(a, ()))
+
+  val ones2: Stream[Int] = unfold[Int, Unit](1)(_ ⇒ Some(1, ()))
 }
