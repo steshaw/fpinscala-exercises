@@ -116,6 +116,12 @@ trait Stream[+A] { self ⇒
       case (Empty,       Empty)       ⇒ None
     }
   }
+
+  def tails: Stream[Stream[A]] =
+    unfold(self) {
+      case Empty ⇒ None
+      case s@Cons(a, as) ⇒ Some(s → as())
+    } append cons(empty, empty)
 }
 
 // XXX: re-evaluate representation to make it easier to be lazy?
