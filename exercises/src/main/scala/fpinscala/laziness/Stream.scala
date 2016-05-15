@@ -75,7 +75,11 @@ trait Stream[+A] { self ⇒
   def flatMap[B](f: A ⇒ Stream[B]): Stream[B] =
     self.foldRight(empty[B])((a, b) ⇒ f(a) append b)
 
-  def startsWith[B](s: Stream[B]): Boolean = sys.error("todo")
+  def startsWith[A](os: Stream[A]): Boolean =
+    self.zipAll(os).takeWhile { case (l, r) ⇒ r.isDefined }.forAll {
+      case (Some(l), Some(r)) ⇒ l == r
+      case  _ => false
+    }
 
   def toList: List[A] = foldRight[List[A]](Nil)(_ :: _)
 
