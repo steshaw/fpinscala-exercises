@@ -1,10 +1,9 @@
 package fpinscala.laziness
 
-import scala.{Stream ⇒ _}
-import Stream._
+import fpinscala.laziness.Stream._
 
 import scala.annotation.tailrec
-
+import scala.{Stream ⇒ _}
 
 trait Stream[+A] { self ⇒
 
@@ -122,6 +121,8 @@ trait Stream[+A] { self ⇒
       case Empty ⇒ None
       case s@Cons(a, as) ⇒ Some(s → as())
     } append cons(empty, empty)
+
+  def hasSubsequence[A](s: Stream[A]): Boolean = tails exists (_ startsWith s)
 }
 
 // XXX: re-evaluate representation to make it easier to be lazy?
