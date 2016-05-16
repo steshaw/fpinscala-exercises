@@ -50,6 +50,11 @@ object Par {
     run(es)(f(k))
   }
 
+  def map2_[A,B,C](a: Par[A], b: Par[B])(f: (A,B) => C): Par[C] = ???
+
+  def sequence[A](pas: List[Par[A]]): Par[List[A]] =
+    pas.foldRight(unit(List.empty[A]))((pa, pas) ⇒ map2(pa, pas)(_ :: _))
+
   /* Gives us infix syntax for `Par`. */
   implicit def toParOps[A](p: Par[A]): ParOps[A] = new ParOps(p)
 
