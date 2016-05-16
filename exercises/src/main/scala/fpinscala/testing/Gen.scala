@@ -13,7 +13,12 @@ The library developed in this chapter goes through several iterations. This file
 shell, which you can fill in and modify while working through the chapter.
 */
 
-trait Prop {
+trait Prop { p1 ⇒
+  def check: Boolean
+
+  def &&(p2: Prop): Prop = new Prop {
+    def check = p1.check && p2.check
+  }
 }
 
 object Prop {
