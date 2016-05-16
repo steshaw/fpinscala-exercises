@@ -56,7 +56,6 @@ object Nonblocking {
     def eval(es: ExecutorService)(r: => Unit): Unit =
       es.submit(new Callable[Unit] { def call = r })
 
-
     def map2[A,B,C](p: Par[A], p2: Par[B])(f: (A,B) => C): Par[C] =
       es => new Future[C] {
         def apply(cb: C => Unit): Unit = {
@@ -106,6 +105,9 @@ object Nonblocking {
     def sequence[A](as: List[Par[A]]): Par[List[A]] =
       map(sequenceBalanced(as.toIndexedSeq))(_.toList)
 
+    def parMap[A,B](as: List[A])(f: A => B): Par[List[B]] =
+      sequence(as.map(asyncF(f)))
+
     // exercise answers
 
     /*
@@ -131,10 +133,24 @@ object Nonblocking {
           }
       }
 
-    def choiceN[A](p: Par[Int])(ps: List[Par[A]]): Par[A] = ???
+    def choiceN[A](p: Par[Int])(ps: List[Par[A]]): Par[A] =
+      es ⇒ new Future[A] {
+        def apply(cb: A ⇒ Unit): Unit = {
+          val p1: Future[Int] = p(es)
+          p1(i ⇒ {
+            val eval1: Unit = eval(es) {
+              val ps1: Par[A] = ps(i)
+              ps1(es)(cb)
+            }
+          })
+        }
+      }
 
-    def choiceViaChoiceN[A](a: Par[Boolean])(ifTrue: Par[A], ifFalse: Par[A]): Par[A] =
-      ???
+    def choiceViaChoiceN[A](a: Par[Boolean])(ifTrue: Par[A], ifFalse: Par[A]): Par[A] = {
+      val ps: List[Par[A]] = List(ifTrue, ifFalse)
+      val pi: Par[Int] = a.map(b ⇒ if (b) 0 else 1)
+      choiceN(pi)(ps)
+    }
 
     def choiceMap[K,V](p: Par[K])(ps: Map[K,Par[V]]): Par[V] =
       ???
