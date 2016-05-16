@@ -40,6 +40,8 @@ object Gen {
     gen.map(_ + start)
   }
 
+  def boolean: Gen[Boolean] = choose(0, 2).map(_ == 1)
+
   val testChoose = listOfN(10000, Gen.choose(0, 3)).
     sample.run(RNG.Simple(0))._1.distinct.sorted == List(0, 1, 2)
 }
