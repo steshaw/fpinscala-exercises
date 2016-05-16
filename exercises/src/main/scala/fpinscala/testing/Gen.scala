@@ -49,6 +49,9 @@ object Gen {
 
   def boolean: Gen[Boolean] = choose(0, 2).map(_ == 1)
 
+  def union[A](g1: Gen[A], g2: Gen[A]): Gen[A] =
+    boolean.flatMap(b ⇒ if (b) g1 else g2)
+
   val testChoose = listOfN(10000, Gen.choose(0, 3)).
     sample.run(RNG.Simple(0))._1.distinct.sorted == List(0, 1, 2)
 }
