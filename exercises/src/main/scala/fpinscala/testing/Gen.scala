@@ -8,25 +8,25 @@ import Gen._
 import Prop._
 import java.util.concurrent.{Executors,ExecutorService}
 
-case class Prop(run: (TestCases, RNG) => Result) { p1 ⇒
+case class Prop(run: (MaxSize, TestCases, RNG) => Result) { p1 ⇒
   def &&(p2: Prop): Prop = Prop {
-    (testCases, rng) ⇒ {
-      val r1: Result = p1.run(testCases, rng)
+    (maxSize, testCases, rng) ⇒ {
+      val r1: Result = p1.run(maxSize, testCases, rng)
       if (r1.isFalsified) r1
-      else p2.run(testCases, rng)
+      else p2.run(maxSize, testCases, rng)
     }
   }
 
   def ||(p2: Prop): Prop = Prop {
-    (testCases, rng) ⇒ {
-      val r1: Result = p1.run(testCases, rng)
-      if (r1.isFalsified) p2.run(testCases, rng)
+    (maxSize, testCases, rng) ⇒ {
+      val r1: Result = p1.run(maxSize, testCases, rng)
+      if (r1.isFalsified) p2.run(maxSize, testCases, rng)
       else r1
     }
   }
 
-  def label(label: String) = Prop { (testCases, rng) ⇒
-    p1.run(testCases, rng) match {
+  def label(label: String) = Prop { (maxSize, testCases, rng) ⇒
+    p1.run(maxSize, testCases, rng) match {
       case f@Falsified(failedCase, _) ⇒ f.copy(s"label: " + failedCase)
       case passed ⇒ passed
     }
@@ -44,20 +44,37 @@ case class Falsified(failure: FailedCase, successes: SuccessCount) extends Resul
 }
 
 object Prop {
+  type MaxSize = Int
   type FailedCase = String
   type SuccessCount = Int
   type TestCases = Int
 
+  def forAll[A](sa: SGen[A])(p: A => Boolean): Prop =
+    forAll(sa.forSize(_))(p)
+
+  def forAll[A](fga: Int ⇒ Gen[A])(p: A ⇒ Boolean): Prop = Prop {
+    (maxSize, n, rng) ⇒
+      val casesPerSize = (n + (maxSize - 1)) / maxSize
+      val props: Stream[Prop] = Stream.from(0).take((n min maxSize) + 1).map { i ⇒
+        forAll(fga(i))(p)
+      }
+      val prop: Prop = props.map(p ⇒ Prop { (max, _, rng) ⇒
+        p.run(max, casesPerSize, rng)
+      }).toList.reduce(_ && _)
+      prop.run(maxSize, n, rng)
+  }
+
   def forAll[A](ga: Gen[A])(p: A ⇒ Boolean): Prop = Prop {
-    def randomStream[A](g: Gen[A])(rng: RNG): Stream[A] =
+    def randomStream(g: Gen[A])(rng: RNG): Stream[A] =
       Stream.unfold(rng)(rng ⇒ Some(g.sample.run(rng)))
 
-    def buildMsg[A](s: A, e: Exception): String =
+    def buildMsg(s: A, e: Exception): String =
       s"test case: $s\n" +
         s"generated an exception: ${e.getMessage}\n" +
         s"stack trace:\n ${e.getStackTrace.mkString("\n")}"
 
-    (n, rng) ⇒ randomStream(ga)(rng).zip(Stream.from(0)).take(n).map {
+    // XXX: Just ignore maxSize here...
+    (_, n, rng) ⇒ randomStream(ga)(rng).zip(Stream.from(0)).take(n).map {
       case (a, i) ⇒ try {
         if (p(a)) Passed else Falsified(a.toString, i)
       } catch { case e: Exception ⇒ Falsified(buildMsg(a, e), i) }
@@ -65,7 +82,7 @@ object Prop {
   }
 }
 
-case class Gen[A](sample: State[RNG, A]) { ga ⇒
+case class Gen[+A](sample: State[RNG, A]) { ga ⇒
   def map[B](f: A => B): Gen[B] = Gen(sample.map(f))
   def flatMap[B](f: A => Gen[B]): Gen[B] =
     Gen(sample.flatMap(a ⇒ f(a).sample))
