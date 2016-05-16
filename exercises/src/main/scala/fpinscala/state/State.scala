@@ -132,14 +132,17 @@ object RNG {
     })
 }
 
-case class State[S,+A](run: S => (A, S)) {
+case class State[S,+A](run: S => (A, S)) { sa ⇒
   def map[B](f: A => B): State[S, B] = State(s1 => {
     val (a, s2) = run(s1)
     (f(a), s2)
   })
 
-  def map2[B,C](sb: State[S, B])(f: (A, B) => C): State[S, C] =
-    sys.error("todo")
+  def map2[B,C](sb: State[S, B])(f: (A, B) => C): State[S, C] = State(s0 ⇒ {
+    val (a, s1) = sa.run(s0)
+    val (b, s2) = sb.run(s1)
+    (f(a, b), s2)
+  })
 
   def flatMap[B](f: A => State[S, B]): State[S, B] = State(s1 => {
     val (a, s2) = run(s1)
@@ -154,6 +157,15 @@ case object Turn extends Input
 case class Machine(locked: Boolean, candies: Int, coins: Int)
 
 object State {
+  def unit[S, A](a: A): State[S, A] = State((a, _))
+
+  def sequence[S, A](fs: List[State[S, A]]): State[S, List[A]] = State { s0 ⇒
+    fs.foldRight((List.empty[A], s0)) { case (randA, (as, s0)) ⇒
+      val (a, s1) = randA.run(s0)
+      (a :: as) → s1
+    }
+  }
+
   type Rand[A] = State[RNG, A]
   def simulateMachine(inputs: List[Input]): State[Machine, (Int, Int)] = ???
 }
