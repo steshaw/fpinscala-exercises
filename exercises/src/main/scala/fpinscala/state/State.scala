@@ -150,12 +150,6 @@ case class State[S,+A](run: S => (A, S)) { sa ⇒
   })
 }
 
-sealed trait Input
-case object Coin extends Input
-case object Turn extends Input
-
-case class Machine(locked: Boolean, candies: Int, coins: Int)
-
 object State {
   def unit[S, A](a: A): State[S, A] = State((a, _))
 
@@ -166,6 +160,50 @@ object State {
     }
   }
 
+  def get[S]: State[S, S] = State(s => (s, s))
+
+  def set[S](s: S): State[S, Unit] = State(_ => ((), s))
+
+  def modify[S](f: S => S): State[S, Unit] = for {
+    s <- get
+    _ <- set(f(s))
+  } yield ()
+
   type Rand[A] = State[RNG, A]
-  def simulateMachine(inputs: List[Input]): State[Machine, (Int, Int)] = ???
+}
+
+object Simulator {
+  sealed trait Input
+  case object Coin extends Input
+  case object Turn extends Input
+
+  case class Machine(locked: Boolean, candies: Int, coins: Int)
+
+  import State._
+
+  /*
+    - Inserting a coin into a locked machine will cause it to unlock if there’s any candy left.
+    - Turning the knob on an unlocked machine will cause it to dispense candy and become locked.
+    - Turning the knob on a locked machine or inserting a coin into an unlocked machine does nothing.
+    - A machine that’s out of candy ignores all inputs.
+   */
+  def processInput(input: Input, machine0: Machine): Machine =
+    if (machine0.candies <= 0) machine0
+    else input match {
+      case Coin ⇒ if (machine0.locked) machine0.copy(locked = false)
+                  else machine0
+      case Turn ⇒ if (machine0.locked) machine0
+                  else machine0.copy(locked = true, candies = machine0.candies - 1)
+    }
+
+  def inputToStateAction(input: Input): State[Machine, Unit] = for {
+    machine0 ← get
+    machine1 ← unit(processInput(input, machine0))
+    _ ← set(machine1)
+  } yield ()
+
+  def simulateMachine(inputs: List[Input]): State[Machine, (Int, Int)] = for {
+    _ ← sequence(inputs.map(inputToStateAction))
+    machine0 ← get
+  } yield (machine0.candies, machine0.coins)
 }
