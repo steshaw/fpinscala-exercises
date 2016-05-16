@@ -8,16 +8,61 @@ import Gen._
 import Prop._
 import java.util.concurrent.{Executors,ExecutorService}
 
-trait Prop { p1 ⇒
-  def check: Boolean
+case class Prop(run: (TestCases, RNG) => Result) { p1 ⇒
+  def &&(p2: Prop): Prop = Prop {
+    (testCases, rng) ⇒ {
+      val r1: Result = p1.run(testCases, rng)
+      if (r1.isFalsified) r1
+      else p2.run(testCases, rng)
+    }
+  }
 
-  def &&(p2: Prop): Prop = new Prop {
-    def check = p1.check && p2.check
+  def ||(p2: Prop): Prop = Prop {
+    (testCases, rng) ⇒ {
+      val r1: Result = p1.run(testCases, rng)
+      if (r1.isFalsified) p2.run(testCases, rng)
+      else r1
+    }
+  }
+
+  def label(label: String) = Prop { (testCases, rng) ⇒
+    p1.run(testCases, rng) match {
+      case f@Falsified(failedCase, _) ⇒ f.copy(s"label: " + failedCase)
+      case passed ⇒ passed
+    }
   }
 }
 
+sealed trait Result {
+  def isFalsified: Boolean
+}
+case object Passed extends Result {
+  def isFalsified = false
+}
+case class Falsified(failure: FailedCase, successes: SuccessCount) extends Result {
+  def isFalsified = true
+}
+
 object Prop {
-  def forAll[A](gen: Gen[A])(f: A => Boolean): Prop = ???
+  type FailedCase = String
+  type SuccessCount = Int
+  type TestCases = Int
+
+  def forAll[A](ga: Gen[A])(p: A ⇒ Boolean): Prop = Prop {
+    def randomStream[A](g: Gen[A])(rng: RNG): Stream[A] =
+      Stream.unfold(rng)(rng ⇒ Some(g.sample.run(rng)))
+
+    def buildMsg[A](s: A, e: Exception): String =
+      s"test case: $s\n" +
+        s"generated an exception: ${e.getMessage}\n" +
+        s"stack trace:\n ${e.getStackTrace.mkString("\n")}"
+
+    (n, rng) ⇒ randomStream(ga)(rng).zip(Stream.from(0)).take(n).map {
+      case (a, i) ⇒ try {
+        if (p(a)) Passed else Falsified(a.toString, i)
+      } catch { case e: Exception ⇒ Falsified(buildMsg(a, e), i) }
+    }.find(_.isFalsified).getOrElse(Passed)
+  }
 }
 
 case class Gen[A](sample: State[RNG, A]) { ga ⇒

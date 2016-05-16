@@ -5,10 +5,10 @@ import fpinscala.laziness.Stream._
 import scala.annotation.tailrec
 import scala.{Stream ⇒ _}
 
-trait Stream[+A] { self ⇒
+trait Stream[+A] { as ⇒
 
   def foldRight[B](z: => B)(f: (A, => B) => B): B = // The arrow `=>` in front of the argument type `B` means that the function `f` takes its second argument by name and may choose not to evaluate it.
-    self match {
+    as match {
       case Cons(h,t) => f(h(), t().foldRight(z)(f)) // If `f` doesn't evaluate its second argument, the recursion never occurs.
       case _ => z
     }
@@ -17,22 +17,22 @@ trait Stream[+A] { self ⇒
     foldRight(false)((a, b) => p(a) || b) // Here `b` is the unevaluated recursive step that folds the tail of the stream. If `p(a)` returns `true`, `b` will never be evaluated and the computation terminates early.
 
   @annotation.tailrec
-  final def find(f: A => Boolean): Option[A] = self match {
+  final def find(f: A => Boolean): Option[A] = as match {
     case Empty => None
     case Cons(h, t) => if (f(h())) Some(h()) else t().find(f)
   }
 
   def take(n: Int): Stream[A] =
     if (n <= 0) empty
-    else self match {
+    else as match {
       case Empty ⇒ empty
       case Cons(h, t) ⇒ cons(h(), t().take(n - 1)) // FIX: t is evaluated early here.
     }
 
   @tailrec
   final def drop(n: Int): Stream[A] =
-    if (n <= 0) self
-    else self match {
+    if (n <= 0) as
+    else as match {
       case Empty ⇒ empty
       case Cons(_, t) ⇒ t().drop(n - 1)
     }
@@ -46,7 +46,7 @@ trait Stream[+A] { self ⇒
   }
 
   def takeWhile2(p: A => Boolean): Stream[A] =
-    self.foldRight(empty[A]) { (a, b) ⇒
+    as.foldRight(empty[A]) { (a, b) ⇒
       if (p(a)) cons(a, b) else empty
     }
 
@@ -56,10 +56,10 @@ trait Stream[+A] { self ⇒
   }
 
   def forAll(p: A => Boolean): Boolean =
-    self.foldRight(true)((a, b) ⇒ p(a) && b)
+    as.foldRight(true)((a, b) ⇒ p(a) && b)
 
   def headOption: Option[A] =
-    self.foldRight[Option[A]](None)((a, _) ⇒ Some(a))
+    as.foldRight[Option[A]](None)((a, _) ⇒ Some(a))
 
   // 5.7 map, filter, append, flatMap using foldRight. Part of the exercise is
   // writing your own function signatures.
@@ -72,10 +72,10 @@ trait Stream[+A] { self ⇒
   def append[AA >: A](o: ⇒ Stream[AA]): Stream[AA] = foldRight(o)(cons(_, _))
 
   def flatMap[B](f: A ⇒ Stream[B]): Stream[B] =
-    self.foldRight(empty[B])((a, b) ⇒ f(a) append b)
+    as.foldRight(empty[B])((a, b) ⇒ f(a) append b)
 
   def startsWith[A](os: Stream[A]): Boolean =
-    self.zipAll(os).takeWhile { case (l, r) ⇒ r.isDefined }.forAll {
+    as.zipAll(os).takeWhile { case (l, r) ⇒ r.isDefined }.forAll {
       case (Some(l), Some(r)) ⇒ l == r
       case  _ => false
     }
@@ -84,31 +84,33 @@ trait Stream[+A] { self ⇒
 
   // Exercise 5.13. map, take, takeWhile, zipWith in terms of unfold.
   def mapViaUnfold[B](f: A ⇒ B): Stream[B] =
-    unfold[B, Stream[A]](self) {
+    unfold[B, Stream[A]](as) {
       case Empty ⇒ None
       case Cons(a, as) ⇒ Some((f(a()), as())) // FIX: Evaluates `as` early!
     }
 
   def takeViaUnfold(n: Int): Stream[A] =
-    unfold(self) {
+    unfold(as) {
       case Empty ⇒ None
       case Cons(a, as) ⇒ if (n <= 0) None else Some((a(), as())) // FIX: evaluates `as`!
     }
 
   def takeWhileViaUnfold(p: A => Boolean): Stream[A] =
-    unfold(self) {
+    unfold(as) {
       case Empty ⇒ None
       case Cons(a, as) ⇒ if (p(a())) Some((a(), as())) else None // FIX: evaluates `as`!
     }
 
   def zipWithViaUnfold[B, C](o: Stream[B])(f: (A, B) ⇒ C): Stream[C] =
-    unfold((self, o)) {
+    unfold((as, o)) {
       case ((Cons(a, as), Cons(b, bs))) ⇒ Some((f(a(), b()), (as(), bs()))) // FIX: early evaluation of tails.
       case _ ⇒ None
     }
 
+  def zip[B](bs: Stream[B]) = as.zipWithViaUnfold(bs) { case (a, b) ⇒ (a, b) }
+
   def zipAll[B](o: Stream[B]): Stream[(Option[A],Option[B])] = {
-    unfold[(Option[A], Option[B]), (Stream[A], Stream[B])]((self, o)) {
+    unfold[(Option[A], Option[B]), (Stream[A], Stream[B])]((as, o)) {
       case (Cons(a, as), Cons(b, bs)) ⇒ Some(Some(a()) → Some(b()), as()  → bs())
       case (Cons(a, as), Empty)       ⇒ Some(Some(a()) → None     , as()  → empty)
       case (Empty,       Cons(b, bs)) ⇒ Some(None      → Some(b()), empty → bs())
@@ -117,7 +119,7 @@ trait Stream[+A] { self ⇒
   }
 
   def tails: Stream[Stream[A]] =
-    unfold(self) {
+    unfold(as) {
       case Empty ⇒ None
       case s@Cons(a, as) ⇒ Some(s → as())
     } append cons(empty, empty)
@@ -125,7 +127,7 @@ trait Stream[+A] { self ⇒
   def hasSubsequence[A](s: Stream[A]): Boolean = tails exists (_ startsWith s)
 
   def scanRight[B](z: B)(f: (A, ⇒ B) ⇒ B): Stream[B] =
-    unfold(self) {
+    unfold(as) {
       case Empty ⇒ None
       case s@Cons(a, as) ⇒ Some(s.foldRight(z)(f) → as())
     } append cons(z, empty)
