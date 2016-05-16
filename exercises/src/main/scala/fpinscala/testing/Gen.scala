@@ -29,7 +29,6 @@ case class Gen[A](sample: State[RNG, A]) { ga ⇒
     size ← genSize
     as ← Gen.listOfN(size, ga)
   } yield as
-
 }
 
 object Gen {
@@ -51,6 +50,13 @@ object Gen {
 
   def union[A](g1: Gen[A], g2: Gen[A]): Gen[A] =
     boolean.flatMap(b ⇒ if (b) g1 else g2)
+
+  def weighted[A](g1: (Gen[A], Double), g2: (Gen[A], Double)): Gen[A] = {
+    val ratio = g1._2 / (g1._2 + g2._2)
+    Gen(State(RNG.double)).flatMap(d ⇒ {
+      if (d < ratio) g1._1 else g2._1
+    })
+  }
 
   val testChoose = listOfN(10000, Gen.choose(0, 3)).
     sample.run(RNG.Simple(0))._1.distinct.sorted == List(0, 1, 2)
