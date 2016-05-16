@@ -109,4 +109,10 @@ object Gen {
     sample.run(RNG.Simple(0))._1.distinct.sorted == List(0, 1, 2)
 }
 
-case class SGen[+A](forSize: Int => Gen[A])
+case class SGen[+A](forSize: Int => Gen[A]) { sa ⇒
+  def map[B](f: A ⇒ B): SGen[B] = SGen(n ⇒ sa.forSize(n).map(f))
+
+  def flatMap[B](f: A ⇒ SGen[B]): SGen[B] = SGen { size ⇒
+    sa.forSize(size).flatMap(a ⇒ f(a).forSize(size))
+  }
+}
