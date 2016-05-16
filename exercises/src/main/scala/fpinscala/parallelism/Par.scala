@@ -9,7 +9,9 @@ object Par {
   def run[A](s: ExecutorService)(a: Par[A]): Future[A] = a(s)
 
   def unit[A](a: A): Par[A] = (es: ExecutorService) => UnitFuture(a) // `unit` is represented as a function that returns a `UnitFuture`, which is a simple implementation of `Future` that just wraps a constant value. It doesn't use the `ExecutorService` at all. It's always done and can't be cancelled. Its `get` method simply returns the value that we gave it.
-  
+
+  def lazyUnit[A](a: => A): Par[A] = fork(unit(a))
+
   private case class UnitFuture[A](get: A) extends Future[A] {
     def isDone = true 
     def get(timeout: Long, units: TimeUnit) = get 
@@ -54,6 +56,25 @@ object Par {
 
   def sequence[A](pas: List[Par[A]]): Par[List[A]] =
     pas.foldRight(unit(List.empty[A]))((pa, pas) ⇒ map2(pa, pas)(_ :: _))
+
+  def asyncF[A,B](f: A => B): A => Par[B] =
+    a => lazyUnit(f(a))
+
+  def parMap[A,B](ps: List[A])(f: A => B): Par[List[B]] = fork {
+    val fbs: List[Par[B]] = ps.map(asyncF(f))
+    sequence(fbs)
+  }
+
+  import scala.{Option => _, Some => _, None => _}
+  import fpinscala.errorhandling.Option
+  import fpinscala.errorhandling.Some
+  import fpinscala.errorhandling.None
+
+  def parFilter[A](as: List[A])(f: A => Boolean): Par[List[A]] = {
+    val ps: List[Par[Option[A]]] = as.map(asyncF[A, Option[A]](a ⇒ if (f(a)) Some(a) else None))
+    val sequence1: Par[List[Option[A]]] = sequence(ps)
+    map(sequence1)(Option.sequence(_).getOrElse(Nil))
+  }
 
   /* Gives us infix syntax for `Par`. */
   implicit def toParOps[A](p: Par[A]): ParOps[A] = new ParOps(p)
