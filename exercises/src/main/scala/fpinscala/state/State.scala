@@ -196,11 +196,8 @@ object Simulator {
                   else machine0.copy(locked = true, candies = machine0.candies - 1)
     }
 
-  def inputToStateAction(input: Input): State[Machine, Unit] = for {
-    machine0 ← get
-    machine1 ← unit(processInput(input, machine0))
-    _ ← set(machine1)
-  } yield ()
+  def inputToStateAction(input: Input): State[Machine, Unit] =
+    modify(processInput(input, _))
 
   def simulateMachine(inputs: List[Input]): State[Machine, (Int, Int)] = for {
     _ ← sequence(inputs.map(inputToStateAction))
