@@ -104,11 +104,8 @@ object Gen {
   def sequence[S, A](fs: List[Gen[A]]): Gen[List[A]] =
     Gen(State.sequence(fs.map(_.sample)))
 
-  def choose(start: Int, stopExclusive: Int): Gen[Int] = {
-    val state: State[RNG, Int] = State(RNG.nonNegativeLessThan(stopExclusive + start))
-    val gen: Gen[Int] = Gen(state)
-    gen.map(_ + start)
-  }
+  def choose(start: Int, stopExclusive: Int): Gen[Int] =
+    Gen(State(RNG.nonNegativeInt).map(n ⇒ start + n % (stopExclusive - start)))
 
   def boolean: Gen[Boolean] = choose(0, 2).map(_ == 1)
 
@@ -138,4 +135,32 @@ object SGen {
   def listOf[A](ga: Gen[A]): SGen[List[A]] = SGen { size ⇒
     Gen.listOfN(size, ga)
   }
+
+  // XXX: nonEmptyListOf
+  def listOf1[A](ga: Gen[A]): SGen[List[A]] = SGen { size ⇒
+    Gen.listOfN(1 max size, ga)
+  }
+}
+
+object Examples {
+  import SGen._
+
+  val smallInt = Gen.choose(-10,10)
+  val maxProp = forAll(listOf1(smallInt)) { ns =>
+    val max = ns.max
+    !ns.exists(_ > max)
+  }
+
+  def run(
+    p: Prop,
+    maxSize: Int = 100,
+    testCases: Int = 100,
+    rng: RNG = RNG.Simple(System.currentTimeMillis)
+  ): Unit =
+    p.run(maxSize, testCases, rng) match {
+      case Falsified(msg, n) =>
+        println(s"! Falsified after $n passed tests:\n $msg")
+      case Passed =>
+        println(s"+ OK, passed $testCases tests.")
+    }
 }
