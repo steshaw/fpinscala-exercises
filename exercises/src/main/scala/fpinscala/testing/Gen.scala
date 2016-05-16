@@ -74,6 +74,8 @@ case class Gen[A](sample: State[RNG, A]) { ga ⇒
     size ← genSize
     as ← Gen.listOfN(size, ga)
   } yield as
+
+  def unsized: SGen[A] = SGen { _ ⇒ ga }
 }
 
 object Gen {
@@ -107,6 +109,4 @@ object Gen {
     sample.run(RNG.Simple(0))._1.distinct.sorted == List(0, 1, 2)
 }
 
-trait SGen[+A] {
-}
-
+case class SGen[+A](forSize: Int => Gen[A])
