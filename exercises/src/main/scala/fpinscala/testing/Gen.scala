@@ -80,6 +80,19 @@ object Prop {
       } catch { case e: Exception ⇒ Falsified(buildMsg(a, e), i) }
     }.find(_.isFalsified).getOrElse(Passed)
   }
+
+  def run(
+    p: Prop,
+    maxSize: Int = 100,
+    testCases: Int = 100,
+    rng: RNG = RNG.Simple(System.currentTimeMillis)
+  ): Unit =
+    p.run(maxSize, testCases, rng) match {
+      case Falsified(msg, n) =>
+        println(s"! Falsified after $n passed tests:\n $msg")
+      case Passed =>
+        println(s"+ OK, passed $testCases tests.")
+    }
 }
 
 case class Gen[+A](sample: State[RNG, A]) { ga ⇒
@@ -145,22 +158,18 @@ object SGen {
 object Examples {
   import SGen._
 
-  val smallInt = Gen.choose(-10,10)
-  val maxProp = forAll(listOf1(smallInt)) { ns =>
+  val smallInt = Gen.choose(-10, 10)
+  val listMaxProp = forAll(listOf1(smallInt)) { ns =>
     val max = ns.max
     !ns.exists(_ > max)
   }
 
-  def run(
-    p: Prop,
-    maxSize: Int = 100,
-    testCases: Int = 100,
-    rng: RNG = RNG.Simple(System.currentTimeMillis)
-  ): Unit =
-    p.run(maxSize, testCases, rng) match {
-      case Falsified(msg, n) =>
-        println(s"! Falsified after $n passed tests:\n $msg")
-      case Passed =>
-        println(s"+ OK, passed $testCases tests.")
-    }
+  val listSortedProp = forAll(listOf(smallInt)) { ns ⇒
+    val sorted = ns.sorted
+    sorted.length == ns.length &&
+      ns.forall(a ⇒ ns.count(_ == a) == sorted.count(_ == a)) &&
+      (ns.isEmpty || sorted.zip(sorted.tail).forall {
+        case (a, b) ⇒ a <= b // adjacent pairs are sorted.
+      })
+  }
 }
