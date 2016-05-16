@@ -152,8 +152,15 @@ object Nonblocking {
       choiceN(pi)(ps)
     }
 
-    def choiceMap[K,V](p: Par[K])(ps: Map[K,Par[V]]): Par[V] =
-      ???
+    def choiceMap[K, V](pk: Par[K])(choices: Map[K, Par[V]]): Par[V] = {
+      es => new Future[V] {
+        def apply(cb: V => Unit): Unit =
+          pk(es) { key =>
+            val pv: Par[V] = choices(key)
+            eval(es) { pv(es)(cb) }
+          }
+      }
+    }
 
     // see `Nonblocking.scala` answers file. This function is usually called something else!
     def chooser[A,B](p: Par[A])(f: A => Par[B]): Par[B] =
