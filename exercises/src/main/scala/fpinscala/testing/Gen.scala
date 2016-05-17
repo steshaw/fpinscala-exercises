@@ -233,8 +233,8 @@ object Examples {
   val pint: Gen[Par[Int]] = Gen.choose(0,10) map Par.unit
 
   val pint2: Gen[Par[Int]] = {
-    val i1: Gen[Par[Int]] = Gen(State(RNG.int)) map Par.unit
-    val i2: Gen[Par[Int]] = Gen(State(RNG.int)) map Par.unit
+    val i1: Gen[Par[Int]] = Gen(State(RNG.int)) map (i ⇒ Par.fork(Par.unit(i)))
+    val i2: Gen[Par[Int]] = Gen(State(RNG.int)) map (i ⇒ Par.fork(Par.unit(i)))
     val r: Gen[Par[Int]] = i1.map2(i2)((pi1, pi2) ⇒ Par.map2(pi1, pi2)(_ + _))
     r
   }
