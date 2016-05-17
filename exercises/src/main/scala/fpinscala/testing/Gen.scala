@@ -39,6 +39,9 @@ sealed trait Result {
 case object Passed extends Result {
   def isFalsified = false
 }
+case object Proved extends Result {
+  def isFalsified = false
+}
 case class Falsified(failure: FailedCase, successes: SuccessCount) extends Result {
   def isFalsified = true
 }
@@ -81,6 +84,10 @@ object Prop {
     }.find(_.isFalsified).getOrElse(Passed)
   }
 
+  def check(p: => Boolean): Prop = Prop { (_, _, _) =>
+    if (p) Proved else Falsified("()", 0)
+  }
+
   def run(
     p: Prop,
     maxSize: Int = 100,
@@ -92,6 +99,8 @@ object Prop {
         println(s"! Falsified after $n passed tests:\n $msg")
       case Passed =>
         println(s"+ OK, passed $testCases tests.")
+      case Proved =>
+        println(s"+ OK, proved property.")
     }
 }
 
@@ -171,5 +180,20 @@ object Examples {
       (ns.isEmpty || sorted.zip(sorted.tail).forall {
         case (a, b) ⇒ a <= b // adjacent pairs are sorted.
       })
+  }
+
+  def p2(ES: ExecutorService) = Prop.check {
+    val p = Par.map(Par.unit(1))(_ + 1)
+    val p2 = Par.unit(2)
+    p(ES).get == p2(ES).get
+  }
+
+  def go = {
+    val ES: ExecutorService = Executors.newCachedThreadPool
+    try {
+      run(listMaxProp)
+      run(listSortedProp)
+      run(p2(ES))
+    } catch { case _: Throwable ⇒ ES.shutdown() }
   }
 }
