@@ -6,7 +6,7 @@ import fpinscala.parallelism._
 import fpinscala.parallelism.Par.Par
 import Gen._
 import Prop._
-import java.util.concurrent.{Executors,ExecutorService}
+import java.util.concurrent.{ExecutorService, Executors, Future}
 
 case class Prop(run: (MaxSize, TestCases, RNG) => Result) { p1 ⇒
   def &&(p2: Prop): Prop = Prop {
@@ -88,26 +88,50 @@ object Prop {
     if (p) Proved else Falsified("()", 0)
   }
 
+  val S = weighted(
+    choose(1, 4).map(Executors.newFixedThreadPool) -> .75,
+    unit(Executors.newCachedThreadPool) -> .25
+  )
+
+  def forAllPar[A](g: Gen[A])(f: A => Par[Boolean]): Prop =
+    forAll(S ** g) { case s ** a =>
+      val b: Boolean = f(a)(s).get
+      // FIX: side effect. Plus, cannot do this here as it's too early?
+      //s.shutdown() // Otherwise we leave a bunch of executors running.
+      b
+    }
+
+  def checkPar(p: Par[Boolean]): Prop =
+    forAllPar(Gen.unit(()))(_ => p)
+
   def run(
+    name: String,
     p: Prop,
     maxSize: Int = 100,
     testCases: Int = 100,
     rng: RNG = RNG.Simple(System.currentTimeMillis)
-  ): Unit =
+  ): Unit = {
     p.run(maxSize, testCases, rng) match {
       case Falsified(msg, n) =>
-        println(s"! Falsified after $n passed tests:\n $msg")
+        println(s"! Falsified after $n passed tests:\n $msg ($name)")
       case Passed =>
-        println(s"+ OK, passed $testCases tests.")
+        println(s"+ OK, passed $testCases tests. ($name)")
       case Proved =>
-        println(s"+ OK, proved property.")
+        println(s"+ OK, proved property. ($name)")
     }
+  }
 }
 
 case class Gen[+A](sample: State[RNG, A]) { ga ⇒
   def map[B](f: A => B): Gen[B] = Gen(sample.map(f))
+
+  def map2[B, C](gb: Gen[B])(f: (A, B) ⇒ C) =
+    ga.flatMap(a ⇒ gb.map(b ⇒ f(a, b)))
+
   def flatMap[B](f: A => Gen[B]): Gen[B] =
     Gen(sample.flatMap(a ⇒ f(a).sample))
+
+  def **[B](gb: Gen[B]): Gen[(A,B)] = (ga map2 gb)((_,_))
 
   def listOfN(genSize: Gen[Int]): Gen[List[A]] = for {
     size ← genSize
@@ -115,6 +139,10 @@ case class Gen[+A](sample: State[RNG, A]) { ga ⇒
   } yield as
 
   def unsized: SGen[A] = SGen { _ ⇒ ga }
+}
+
+object ** {
+  def unapply[A, B](p: (A, B)) = Some(p)
 }
 
 object Gen {
@@ -188,12 +216,40 @@ object Examples {
     p(ES).get == p2(ES).get
   }
 
-  def go = {
+  def equal[A](p: Par[A], p2: Par[A]): Par[Boolean] =
+    Par.map2(p, p2)(_ == _)
+
+  def p3(ES: ExecutorService) = check {
+    equal(Par.map(Par.unit(1))(_ + 1), Par.unit(2))(ES).get
+  }
+
+  val p4 = checkPar {
+    equal(
+      Par.map(Par.unit(1))(_ + 1),
+      Par.unit(2)
+    )
+  }
+
+  val pint: Gen[Par[Int]] = Gen.choose(0,10) map Par.unit
+
+  val pint2: Gen[Par[Int]] = {
+    val i1: Gen[Par[Int]] = Gen(State(RNG.int)) map Par.unit
+    val i2: Gen[Par[Int]] = Gen(State(RNG.int)) map Par.unit
+    val r: Gen[Par[Int]] = i1.map2(i2)((pi1, pi2) ⇒ Par.map2(pi1, pi2)(_ + _))
+    r
+  }
+
+  val forkProp = Prop.forAllPar(pint2)(i => equal(Par.fork(i), i))
+
+  def go() = {
     val ES: ExecutorService = Executors.newCachedThreadPool
     try {
-      run(listMaxProp)
-      run(listSortedProp)
-      run(p2(ES))
+      run("listMax", listMaxProp)
+      run("listSorted", listSortedProp)
+      run("p2", p2(ES))
+      run("p3", p3(ES))
+      run("p4", p4)
+      run("fork", forkProp)
     } catch { case _: Throwable ⇒ ES.shutdown() }
   }
 }
