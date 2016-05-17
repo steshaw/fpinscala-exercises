@@ -6,7 +6,7 @@ import fpinscala.parallelism._
 import fpinscala.parallelism.Par.Par
 import Gen._
 import Prop._
-import java.util.concurrent.{ExecutorService, Executors, Future}
+import java.util.concurrent.{ExecutorService, Executors}
 
 case class Prop(run: (MaxSize, TestCases, RNG) => Result) { p1 ⇒
   def &&(p2: Prop): Prop = Prop {
@@ -88,16 +88,21 @@ object Prop {
     if (p) Proved else Falsified("()", 0)
   }
 
+  // FIX: Side-effectful hackery so that we can shut down the executor services at the end.
+  val ESs = collection.mutable.ArrayBuffer[ExecutorService]()
+  def newES(es: ExecutorService): ExecutorService = {
+    ESs += es
+    es
+  }
+
   val S = weighted(
-    choose(1, 4).map(Executors.newFixedThreadPool) -> .75,
-    unit(Executors.newCachedThreadPool) -> .25
+    Gen.choose(2, 4).map(size ⇒ newES(Executors.newFixedThreadPool(size))) -> .75,
+    Gen.unit(newES(Executors.newCachedThreadPool)) -> .25
   )
 
   def forAllPar[A](g: Gen[A])(f: A => Par[Boolean]): Prop =
     forAll(S ** g) { case s ** a =>
       val b: Boolean = f(a)(s).get
-      // FIX: side effect. Plus, cannot do this here as it's too early?
-      //s.shutdown() // Otherwise we leave a bunch of executors running.
       b
     }
 
@@ -133,6 +138,8 @@ case class Gen[+A](sample: State[RNG, A]) { ga ⇒
 
   def **[B](gb: Gen[B]): Gen[(A,B)] = (ga map2 gb)((_,_))
 
+  def listOfN(size: Int): Gen[List[A]] = Gen.listOfN(size, ga)
+
   def listOfN(genSize: Gen[Int]): Gen[List[A]] = for {
     size ← genSize
     as ← Gen.listOfN(size, ga)
@@ -150,6 +157,9 @@ object Gen {
 
   def listOfN[A](n: Int, g: Gen[A]): Gen[List[A]] =
     sequence(List.fill(n)(g))
+
+  def listOf[A](g: Gen[A]): SGen[List[A]] =
+    SGen(n => g.listOfN(n))
 
   def sequence[S, A](fs: List[Gen[A]]): Gen[List[A]] =
     Gen(State.sequence(fs.map(_.sample)))
@@ -194,6 +204,8 @@ object SGen {
 
 object Examples {
   import SGen._
+
+  val int = Gen(State(RNG.int))
 
   val smallInt = Gen.choose(-10, 10)
   val listMaxProp = forAll(listOf1(smallInt)) { ns =>
@@ -241,15 +253,23 @@ object Examples {
 
   val forkProp = Prop.forAllPar(pint2)(i => equal(Par.fork(i), i))
 
+  val isEven = (i: Int) => i % 2 == 0
+  val takeWhileProp =
+    Prop.forAll(Gen.listOf(int))(_.takeWhile(isEven).forall(isEven))
+
   def go() = {
-    val ES: ExecutorService = Executors.newCachedThreadPool
+    val ES: ExecutorService = newES(Executors.newCachedThreadPool)
     try {
       run("listMax", listMaxProp)
       run("listSorted", listSortedProp)
       run("p2", p2(ES))
       run("p3", p3(ES))
       run("p4", p4)
+      run("takeWhile", takeWhileProp)
       run("fork", forkProp)
-    } catch { case _: Throwable ⇒ ES.shutdown() }
+    } finally {
+      println(s"Shutdown down ${ESs.size} ExecutorServices")
+      ESs foreach (_.shutdown())
+    }
   }
 }
